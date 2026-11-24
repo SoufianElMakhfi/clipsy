@@ -19,6 +19,8 @@ public sealed class AppSettings
     public bool ShowOverlay { get; set; } = true;
     public OverlayCorner OverlayCorner { get; set; } = OverlayCorner.TopLeft;
     public bool ClipSound { get; set; } = true;
+    public bool ShowToast { get; set; } = true;                        // Meldung "Clip gespeichert" einblenden
+    public ToastCorner ToastCorner { get; set; } = ToastCorner.TopRight;
     public bool PostCompress { get; set; } = false;  // Clips nachträglich zu AV1 (≈60 % kleiner, kostet CPU-Zeit)
     public bool Autostart { get; set; } = true;
 
@@ -53,6 +55,7 @@ public sealed class AppSettings
         if (!Hotkey.TryParse(ClipHotkey, out _)) ClipHotkey = "F10";
         if (!string.IsNullOrEmpty(ToggleHotkey) && !Hotkey.TryParse(ToggleHotkey, out _)) ToggleHotkey = "";
         if (!Enum.IsDefined(OverlayCorner)) OverlayCorner = OverlayCorner.TopLeft;
+        if (!Enum.IsDefined(ToastCorner)) ToastCorner = ToastCorner.TopRight;
         return this;
     }
 

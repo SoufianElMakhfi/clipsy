@@ -1,83 +1,49 @@
 namespace Clipsy;
 
 /// <summary>
-/// Kleiner Status-Punkt (grün = an, rot = aus, orange = startet/Fehler).
-/// Klick-durchlässig, stiehlt nie den Fokus und ist per WDA_EXCLUDEFROMCAPTURE
-/// in keiner Aufnahme sichtbar – auch nicht in Clipsys eigenen Clips.
+/// Clipsy-Logo mit Status-Punkt in einer Bildschirmecke (grün = an, rot = aus, orange = startet/Fehler).
+/// Nie in Aufnahmen sichtbar, klick-durchlässig.
 /// </summary>
-internal sealed class StatusOverlay : Form
+internal sealed class StatusOverlay : AlphaWindow
 {
-    readonly System.Windows.Forms.Timer flashTimer = new() { Interval = 400 };
+    readonly System.Windows.Forms.Timer flashTimer = new() { Interval = 700 };
     readonly System.Windows.Forms.Timer topmostTimer = new() { Interval = 3000 };
-    Color color = Color.Orange, flashColor;
-    bool flashing;
+    Color color = Brand.Orange;
+    Color? flash;
     OverlayCorner corner = OverlayCorner.TopLeft;
-
-    int Dot => LogicalToDeviceUnits(14);
 
     public StatusOverlay()
     {
-        FormBorderStyle = FormBorderStyle.None;
-        ShowInTaskbar = false;
-        StartPosition = FormStartPosition.Manual;
-        TopMost = true;
-        BackColor = Color.Magenta;
-        TransparencyKey = Color.Magenta;
-        DoubleBuffered = true;
-        AutoScaleMode = AutoScaleMode.None;
-        Size = new Size(Dot + 4, Dot + 4);
-
-        flashTimer.Tick += (_, _) => { flashTimer.Stop(); flashing = false; Invalidate(); };
-        topmostTimer.Tick += (_, _) =>
-        {
-            if (Visible)
-                Native.SetWindowPos(Handle, Native.HWND_TOPMOST, 0, 0, 0, 0,
-                                    Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
-        };
+        flashTimer.Tick += (_, _) => { flashTimer.Stop(); flash = null; Render(); };
+        topmostTimer.Tick += (_, _) => { if (Visible) KeepOnTop(); };
         topmostTimer.Start();
     }
 
-    protected override bool ShowWithoutActivation => true;
-
-    protected override CreateParams CreateParams
-    {
-        get
-        {
-            var cp = base.CreateParams;
-            // TOOLWINDOW | TRANSPARENT (klick-durch) | NOACTIVATE | TOPMOST | LAYERED
-            cp.ExStyle |= 0x80 | 0x20 | 0x08000000 | 0x8 | 0x80000;
-            return cp;
-        }
-    }
+    int SizePx => (int)Math.Round(26 * DeviceDpi / 96.0);
 
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        Native.SetWindowDisplayAffinity(Handle, Native.WDA_EXCLUDEFROMCAPTURE);
-        Reposition();
+        Render();
     }
 
-    protected override void OnPaint(PaintEventArgs e)
+    protected override void OnVisibleChanged(EventArgs e)
     {
-        var c = flashing ? flashColor : color;
-        using var brush = new SolidBrush(c);
-        using var pen = new Pen(Color.FromArgb(25, 25, 25), 2);
-        e.Graphics.FillEllipse(brush, 2, 2, Dot, Dot);
-        e.Graphics.DrawEllipse(pen, 2, 2, Dot, Dot);
+        base.OnVisibleChanged(e);
+        if (Visible) Render();
     }
 
     public void SetColor(Color c)
     {
         if (c == color) return;
         color = c;
-        Invalidate();
+        Render();
     }
 
     public void Flash(Color c)
     {
-        flashColor = c;
-        flashing = true;
-        Invalidate();
+        flash = c;
+        Render();
         flashTimer.Stop();
         flashTimer.Start();
     }
@@ -85,21 +51,24 @@ internal sealed class StatusOverlay : Form
     public void SetCorner(OverlayCorner c)
     {
         corner = c;
-        Reposition();
+        Render();
     }
 
-    public void Reposition()
+    void Render()
     {
+        if (!IsHandleCreated) return;
+        int s = SizePx;
         var b = (Screen.PrimaryScreen ?? Screen.AllScreens[0]).Bounds;
-        int m = LogicalToDeviceUnits(6);
-        Size = new Size(Dot + 4, Dot + 4);
-        Location = corner switch
+        int m = (int)Math.Round(8 * DeviceDpi / 96.0);
+        var pos = corner switch
         {
-            OverlayCorner.TopRight => new Point(b.Right - Width - m, b.Top + m),
-            OverlayCorner.BottomLeft => new Point(b.Left + m, b.Bottom - Height - m),
-            OverlayCorner.BottomRight => new Point(b.Right - Width - m, b.Bottom - Height - m),
+            OverlayCorner.TopRight => new Point(b.Right - s - m, b.Top + m),
+            OverlayCorner.BottomLeft => new Point(b.Left + m, b.Bottom - s - m),
+            OverlayCorner.BottomRight => new Point(b.Right - s - m, b.Bottom - s - m),
             _ => new Point(b.Left + m, b.Top + m),
         };
+        using var bmp = Brand.RenderStatus(s, flash ?? color);
+        Present(bmp, pos, 235);
     }
 
     protected override void Dispose(bool disposing)

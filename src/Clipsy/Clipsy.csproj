@@ -11,7 +11,15 @@
     <Version>0.1.0</Version>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <SatelliteResourceLanguages>de;en</SatelliteResourceLanguages>
+    <ApplicationIcon>Assets\clipsy.ico</ApplicationIcon>
+    <!-- WFO5001: Dark-Mode-API (Application.SetColorMode) ist noch als experimentell markiert -->
+    <NoWarn>$(NoWarn);WFO5001</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\clipsy.png" LogicalName="clipsy.png" />
+    <EmbeddedResource Include="Assets\clipsy.ico" LogicalName="clipsy.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />

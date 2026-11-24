@@ -14,6 +14,7 @@ internal static class Program
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        Application.SetColorMode(SystemColorMode.System); // hell/dunkel wie Windows
         Log.Write("Clipsy gestartet");
         Application.Run(new TrayApp());
     }

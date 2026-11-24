@@ -223,6 +223,32 @@ public class AudioDeviceTests
     public void No_devices_gives_null() => Assert.Null(AudioDevices.PickAuto([], null));
 }
 
+public class CodecSupportTests
+{
+    static readonly CodecSupport.Status none = new(false, false), all = new(true, true);
+
+    [Fact]
+    public void Av1_recording_needs_av1_extension() =>
+        Assert.Equal("AV1", CodecSupport.Missing(none, "av1_nvenc", postCompress: false));
+
+    [Fact]
+    public void Hevc_recording_needs_hevc_extension() =>
+        Assert.Equal("HEVC", CodecSupport.Missing(none, "hevc_amf", postCompress: false));
+
+    [Fact]
+    public void Post_compress_turns_everything_into_av1() =>
+        Assert.Equal("AV1", CodecSupport.Missing(new(false, true), "hevc_amf", postCompress: true));
+
+    [Fact]
+    public void H264_needs_nothing() => Assert.Null(CodecSupport.Missing(none, "h264_nvenc", postCompress: false));
+
+    [Fact]
+    public void Unknown_status_gives_no_hint() => Assert.Null(CodecSupport.Missing(null, "av1_nvenc", false));
+
+    [Fact]
+    public void Installed_gives_no_hint() => Assert.Null(CodecSupport.Missing(all, "av1_amf", true));
+}
+
 public class ByteFifoTests
 {
     [Fact]

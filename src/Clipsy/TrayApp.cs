@@ -3,25 +3,24 @@ using System.Media;
 
 namespace Clipsy;
 
-/// <summary>Läuft unsichtbar im Tray: Hotkeys, Status-Punkt, Spielerkennung, Watchdog.</summary>
+/// <summary>Läuft unsichtbar im Tray: Hotkeys, Status-Logo, Clip-Meldungen, Spielerkennung, Watchdog.</summary>
 internal sealed class TrayApp : ApplicationContext
 {
-    static readonly Color Green = Color.FromArgb(46, 204, 64);
-    static readonly Color Red = Color.FromArgb(230, 50, 50);
-    static readonly Color Orange = Color.FromArgb(255, 160, 0);
-
     AppSettings settings;
     readonly Recorder? recorder;
     readonly PostCompressor? compressor;
     readonly HotkeyManager hotkeys = new();
     readonly StatusOverlay overlay = new();
+    readonly ClipToast toast = new();
     readonly NotifyIcon tray;
     readonly System.Windows.Forms.Timer timer = new() { Interval = 1000 };
     readonly Dictionary<Color, Icon> icons = new();
     readonly ToolStripMenuItem clipItem = new("Clip speichern");
-    readonly ToolStripMenuItem toggleItem = new("Aufnahme deaktivieren");
+    readonly ToolStripMenuItem toggleItem = new("Pausieren");
     SettingsForm? settingsForm;
     bool saving;
+    bool codecHintShown;
+    string? balloonStoreCodec;
 
     public TrayApp()
     {
@@ -38,8 +37,10 @@ internal sealed class TrayApp : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Beenden", null, (_, _) => Quit());
 
-        tray = new NotifyIcon { Text = "Clipsy", Visible = true, ContextMenuStrip = menu, Icon = IconFor(Orange) };
+        tray = new NotifyIcon { Text = "Clipsy", Visible = true, ContextMenuStrip = menu, Icon = IconFor(Brand.Orange) };
         tray.DoubleClick += (_, _) => OpenSettings();
+        tray.BalloonTipClicked += (_, _) => { if (balloonStoreCodec != null) CodecSupport.OpenStore(balloonStoreCodec); };
+        tray.BalloonTipClosed += (_, _) => balloonStoreCodec = null;
 
         overlay.SetCorner(settings.OverlayCorner);
         if (settings.ShowOverlay) overlay.Show();
@@ -57,6 +58,7 @@ internal sealed class TrayApp : ApplicationContext
             recorder.SetEnabled(true); // nach jedem Start (z. B. PC-Neustart) immer wieder AN
             compressor = new PostCompressor(ff);
             PostCompressor.CleanLeftovers(settings.OutputFolder);
+            _ = CodecSupport.CheckAsync(); // Video-Erweiterungen schon mal im Hintergrund prüfen
         }
 
         RegisterHotkeys();
@@ -94,12 +96,25 @@ internal sealed class TrayApp : ApplicationContext
         clipItem.Text = $"Clip speichern ({settings.ClipHotkey})";
     }
 
+    void Notify(string title, string subtitle, Color accent)
+    {
+        if (settings.ShowToast) toast.ShowMessage(title, subtitle, accent, settings.ToastCorner);
+    }
+
     async void SaveClip()
     {
         if (recorder is null || saving) return;
-        if (!recorder.Enabled || recorder.State != RecorderState.Recording)
+        if (!recorder.Enabled)
         {
-            overlay.Flash(Red);
+            overlay.Flash(Brand.Red);
+            Notify("Clipsy ist pausiert", string.IsNullOrEmpty(settings.ToggleHotkey)
+                ? "Über das Tray-Menü wieder aktivieren" : $"Mit {settings.ToggleHotkey} wieder aktivieren", Brand.Red);
+            return;
+        }
+        if (recorder.State != RecorderState.Recording)
+        {
+            overlay.Flash(Brand.Orange);
+            Notify("Noch kein Clip möglich", "Aufnahme startet gerade – gleich nochmal versuchen", Brand.Orange);
             return;
         }
         saving = true;
@@ -110,14 +125,17 @@ internal sealed class TrayApp : ApplicationContext
             if (path is not null)
             {
                 if (settings.ClipSound) SystemSounds.Asterisk.Play();
+                var mb = new FileInfo(path).Length / 1048576.0;
+                Notify("Clip gespeichert", $"{AppSettings.LengthLabel(settings.ClipSeconds)} · {mb:0.0} MB · {Path.GetFileName(path)}", Brand.Green);
+                overlay.Flash(Brand.Cyan);
                 // Schon als AV1 aufgenommen (RTX 40/50 usw.) → Nachkomprimieren bringt nichts
                 if (settings.PostCompress && !FfmpegArgs.IsAv1(recorder.Encoder ?? "")) compressor?.Enqueue(path);
-                overlay.Flash(Color.DeepSkyBlue);
+                _ = HintMissingCodecAsync();
             }
             else
             {
-                overlay.Flash(Red);
-                tray.ShowBalloonTip(4000, "Clipsy", "Clip konnte nicht gespeichert werden (Details im Log).", ToolTipIcon.Warning);
+                overlay.Flash(Brand.Red);
+                Notify("Clip fehlgeschlagen", "Details stehen im Log – Aufnahme läuft weiter", Brand.Red);
             }
         }
         catch (Exception ex)
@@ -127,23 +145,39 @@ internal sealed class TrayApp : ApplicationContext
         finally { saving = false; }
     }
 
+    /// <summary>Einmal pro Start: Hinweis, falls Windows die Clips ohne Erweiterung nicht abspielen kann.</summary>
+    async Task HintMissingCodecAsync()
+    {
+        if (codecHintShown) return;
+        var missing = CodecSupport.Missing(await CodecSupport.CheckAsync(), recorder?.Encoder, settings.PostCompress);
+        if (missing is null) return;
+        codecHintShown = true;
+        balloonStoreCodec = missing;
+        var price = missing == "AV1" ? "kostenlos" : "0,99 €";
+        tray.ShowBalloonTip(10000, $"{missing}-Erweiterung fehlt",
+            $"Die Windows-Medienwiedergabe braucht die {missing}-Erweiterung ({price}), um deine Clips abzuspielen. " +
+            "Browser, Discord und VLC gehen auch ohne. Hier klicken, um sie im Microsoft Store zu öffnen.", ToolTipIcon.Info);
+    }
+
     void Toggle()
     {
         if (recorder is null) return;
         recorder.SetEnabled(!recorder.Enabled);
         recorder.Tick();
         UpdateVisuals();
+        if (recorder.Enabled) Notify("Clipsy aktiv", $"{settings.ClipHotkey} speichert die letzten {AppSettings.LengthLabel(settings.ClipSeconds)}", Brand.Green);
+        else Notify("Clipsy pausiert", "Nach einem Neustart ist Clipsy automatisch wieder an", Brand.Red);
     }
 
     (bool enabled, string text, Color color) Status()
     {
-        if (recorder is null) return (false, "ffmpeg fehlt", Red);
+        if (recorder is null) return (false, "ffmpeg fehlt", Brand.Red);
         return recorder.State switch
         {
-            RecorderState.Off => (false, "Deaktiviert", Red),
-            RecorderState.Recording => (true, $"Aktiv – {recorder.Mode}", Green),
-            RecorderState.Error => (true, "Fehler – starte neu …", Orange),
-            _ => (true, "Startet …", Orange),
+            RecorderState.Off => (false, "Pausiert", Brand.Red),
+            RecorderState.Recording => (true, $"Aktiv – {recorder.Mode}", Brand.Green),
+            RecorderState.Error => (true, "Fehler – starte neu …", Brand.Orange),
+            _ => (true, "Startet …", Brand.Orange),
         };
     }
 
@@ -154,23 +188,13 @@ internal sealed class TrayApp : ApplicationContext
         tray.Icon = IconFor(color);
         var tip = $"Clipsy – {text}";
         tray.Text = tip.Length > 63 ? tip[..63] : tip;
-        toggleItem.Text = enabled ? "Aufnahme deaktivieren" : "Aufnahme aktivieren";
+        toggleItem.Text = enabled ? "⏸ Pausieren" : "▶ Aktivieren";
     }
 
     Icon IconFor(Color c)
     {
-        if (icons.TryGetValue(c, out var icon)) return icon;
-        using var bmp = new Bitmap(32, 32);
-        using (var g = Graphics.FromImage(bmp))
-        {
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            using var b = new SolidBrush(c);
-            using var pen = new Pen(Color.FromArgb(30, 30, 30), 3);
-            g.FillEllipse(b, 3, 3, 26, 26);
-            g.DrawEllipse(pen, 3, 3, 26, 26);
-        }
-        icon = Icon.FromHandle(bmp.GetHicon());
-        icons[c] = icon;
+        if (!icons.TryGetValue(c, out var icon))
+            icons[c] = icon = Brand.StatusIcon(c);
         return icon;
     }
 
@@ -189,7 +213,7 @@ internal sealed class TrayApp : ApplicationContext
         if (settingsForm is not null) { settingsForm.Activate(); return; }
 
         hotkeys.UnregisterAll(); // sonst landet z. B. F10 nicht im Tasten-Feld
-        settingsForm = new SettingsForm(settings, recorder?.Encoder ?? "wird ermittelt …", Status, Toggle, OpenFolder);
+        settingsForm = new SettingsForm(settings, () => recorder?.Encoder, Status, Toggle, OpenFolder);
         settingsForm.Saved += s =>
         {
             settings = s;
@@ -198,6 +222,7 @@ internal sealed class TrayApp : ApplicationContext
             recorder?.ApplySettings(settings);
             overlay.SetCorner(settings.OverlayCorner);
             if (settings.ShowOverlay) overlay.Show(); else overlay.Hide();
+            codecHintShown = false;
         };
         settingsForm.FormClosed += (_, _) =>
         {
@@ -216,6 +241,7 @@ internal sealed class TrayApp : ApplicationContext
         recorder?.Dispose();
         tray.Visible = false;
         tray.Dispose();
+        toast.Close();
         overlay.Close();
         ExitThread();
     }
