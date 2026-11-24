@@ -216,7 +216,12 @@ internal sealed class TrayApp : ApplicationContext
 
     void OpenSettings()
     {
-        if (settingsForm is not null) { settingsForm.Activate(); return; }
+        if (settingsForm is not null)
+        {
+            if (settingsForm.WindowState == FormWindowState.Minimized) settingsForm.WindowState = FormWindowState.Normal;
+            settingsForm.Activate();
+            return;
+        }
 
         hotkeys.UnregisterAll(); // sonst landet z. B. F10 nicht im Tasten-Feld
         settingsForm = new SettingsForm(settings, () => recorder?.Encoder, Status, Toggle, OpenFolder);

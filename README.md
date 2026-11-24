@@ -1,3 +1,5 @@
+<img src="src/Clipsy/Assets/clipsy.png" width="96" align="right" alt="Clipsy-Logo">
+
 # Clipsy
 
 Leichtgewichtiger Game-Clipper für Windows 10/11. Läuft unsichtbar im Hintergrund und speichert
@@ -8,7 +10,11 @@ auf Tastendruck die letzten Sekunden als MP4.
 - **F10** speichert einen Clip (Standard: letzte 30 Sekunden, 1080p60)
 - **Ohne Overlays:** nimmt direkt das Spielfenster auf (Windows Graphics Capture), nicht den Bildschirm –
   Fenster darüber (Discord-Overlay, Benachrichtigungen, Clipsys Status-Punkt …) landen nicht im Clip
-- **Status-Punkt:** grün = Clippen an, rot = aus, orange = startet. Ist selbst nie in Aufnahmen sichtbar
+- **Status-Logo:** Clipsy-Logo mit Punkt – grün = Clippen an, rot = pausiert, orange = startet. Nie in Aufnahmen sichtbar
+- **Clip-Meldung:** gleitet nach dem Speichern von rechts herein (oben rechts oder unten rechts über der Taskleiste)
+- **Abspiel-Hinweis:** fehlt Windows die AV1- bzw. HEVC-Erweiterung für die Medienwiedergabe, weist Clipsy darauf hin
+  und öffnet auf Klick den Microsoft Store
+- **Zahnrad öffnen:** Doppelklick aufs Tray-Icon – oder `Clipsy.exe` einfach nochmal starten
 - **Immer an:** startet mit Windows und ist nach jedem Neustart automatisch wieder aktiv –
   auch wenn man es vorher deaktiviert hat
 - **⚙ Einstellungen** (Tray-Icon → Doppelklick): Qualität 720p / 1080p, 30 / 60 FPS,

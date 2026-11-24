@@ -4,6 +4,9 @@ internal static class Program
 {
     public const string ShowSettingsEvent = @"Local\Clipsy.ShowSettings";
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern bool AllowSetForegroundWindow(int processId);
+
     [STAThread]
     static void Main()
     {
@@ -11,7 +14,13 @@ internal static class Program
         if (!first)
         {
             // Läuft schon → dort das Zahnrad öffnen (z. B. Doppelklick auf die EXE oder Startmenü)
-            try { using var ev = EventWaitHandle.OpenExisting(ShowSettingsEvent); ev.Set(); } catch { }
+            try
+            {
+                AllowSetForegroundWindow(-1); // laufende Instanz darf ihr Fenster nach vorne holen
+                using var ev = EventWaitHandle.OpenExisting(ShowSettingsEvent);
+                ev.Set();
+            }
+            catch { }
             return;
         }
 

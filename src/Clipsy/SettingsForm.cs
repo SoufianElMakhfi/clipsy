@@ -15,7 +15,7 @@ internal sealed class SettingsForm : Form
     readonly ComboBox quality = Combo("720p", "1080p (Standard)");
     readonly ComboBox fps = Combo("30 FPS", "60 FPS (Standard)");
     readonly ComboBox codec = Combo(
-        "Automatisch – AV1 wenn möglich, sonst HEVC (empfohlen)",
+        "Automatisch (empfohlen)",
         "H.265 / HEVC",
         "H.264 – läuft überall, größere Dateien");
     readonly ComboBox length = Combo(AppSettings.ClipLengths.Select(AppSettings.LengthLabel).ToArray());
@@ -34,6 +34,18 @@ internal sealed class SettingsForm : Form
     readonly CheckBox autostart = Check("Mit Windows starten (empfohlen)");
     readonly System.Windows.Forms.Timer refresh = new() { Interval = 500 };
     string? missingCodec;
+    FlowLayoutPanel[] columns = [];
+
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        // Gruppen einer Spalte gleich breit → ruhigeres Bild
+        foreach (var col in columns)
+        {
+            int w = col.Controls.Cast<Control>().Max(c => c.Width);
+            foreach (Control c in col.Controls) c.MinimumSize = new Size(w, 0);
+        }
+    }
 
     public SettingsForm(AppSettings current, Func<string?> currentEncoder,
                         Func<(bool enabled, string text, Color color)> status, Action toggle, Action openFolder)
@@ -86,7 +98,9 @@ internal sealed class SettingsForm : Form
 
         var left = Column(
             Section("🎥  Aufnahme",
-                ("Qualität", quality), ("Bildrate", fps), ("Format", codec), ("", codecHint), ("Clip-Länge", length)),
+                ("Qualität", quality), ("Bildrate", fps), ("Format", codec),
+                ("", Note("Automatisch = AV1, wenn die Grafikkarte es kann (RTX 40/50, RX 7000+, Arc), sonst HEVC.")),
+                ("", codecHint), ("Clip-Länge", length)),
             Section("🎧  Ton",
                 ("Spiel-Sound", outputDevice), ("Mikrofon", micDevice),
                 ("", Note("Automatisch = USB-Gerät (Headset, Mikro) hat Vorrang, sonst Windows-Standard."))));
@@ -97,9 +111,10 @@ internal sealed class SettingsForm : Form
             Section("💾  Speichern",
                 ("Ordner", Row(folder, browse)), ("", postCompress),
                 ("", Note("Rechnet nur, wenn kein Spiel läuft. Lange Clips brauchen Puffer-Platz (5 Min ≈ 750 MB)."))),
-            Section("✨  Anzeige & System",
+            Section("✨  Anzeige && System",
                 ("", overlay), ("Position", corner), ("", toast), ("Position", toastCorner), ("", sound), ("", autostart)));
 
+        columns = [left, right];
         var body = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill, Padding = new Padding(12, 8, 12, 0) };
         body.Controls.Add(left, 0, 0);
         body.Controls.Add(right, 1, 0);

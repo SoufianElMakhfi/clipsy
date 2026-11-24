@@ -5,9 +5,9 @@ namespace Clipsy;
 /// <summary>Farben, Logo und daraus abgeleitete Status-Icons.</summary>
 internal static class Brand
 {
-    public static readonly Color Navy = Color.FromArgb(30, 8, 52);       // Logo-Hintergrund
-    public static readonly Color Cyan = Color.FromArgb(0, 245, 255);     // Logo-Fisch
-    public static readonly Color Pink = Color.FromArgb(255, 61, 110);    // Aufnahme-Punkt
+    public static readonly Color Navy = Color.FromArgb(25, 1, 52);       // Logo-Hintergrund
+    public static readonly Color Cyan = Color.FromArgb(5, 250, 245);     // Logo-Fisch
+    public static readonly Color Pink = Color.FromArgb(249, 67, 108);    // Aufnahme-Punkt
     public static readonly Color Green = Color.FromArgb(46, 213, 115);
     public static readonly Color Red = Color.FromArgb(255, 71, 87);
     public static readonly Color Orange = Color.FromArgb(255, 168, 1);
@@ -39,7 +39,8 @@ internal static class Brand
     }
 
     /// <summary>Logo mit Status-Punkt (grün/rot/orange) unten rechts – für Tray und Bildschirm-Anzeige.</summary>
-    public static Bitmap RenderStatus(int size, Color status)
+    /// <param name="badge">Größe des Status-Punkts relativ zum Logo (Tray braucht mehr, sonst bei 16 px unsichtbar)</param>
+    public static Bitmap RenderStatus(int size, Color status, float badge = 0.46f)
     {
         var bmp = new Bitmap(size, size, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using var g = Graphics.FromImage(bmp);
@@ -48,7 +49,7 @@ internal static class Brand
         g.PixelOffsetMode = PixelOffsetMode.HighQuality;
         g.DrawImage(Logo, 0, 0, size, size);
 
-        float d = size * 0.46f, x = size - d, y = size - d;
+        float d = size * badge, x = size - d, y = size - d;
         float outline = Math.Max(1.5f, size / 14f);
         using var dark = new SolidBrush(Color.FromArgb(255, 12, 4, 22));
         g.FillEllipse(dark, x - outline, y - outline, d + outline, d + outline);

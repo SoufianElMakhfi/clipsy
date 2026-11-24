@@ -19,7 +19,7 @@ internal sealed class StatusOverlay : AlphaWindow
         topmostTimer.Start();
     }
 
-    int SizePx => (int)Math.Round(26 * DeviceDpi / 96.0);
+    int SizePx => (int)Math.Round(28 * DeviceDpi / 96.0);
 
     protected override void OnHandleCreated(EventArgs e)
     {
@@ -67,7 +67,7 @@ internal sealed class StatusOverlay : AlphaWindow
             OverlayCorner.BottomRight => new Point(b.Right - s - m, b.Bottom - s - m),
             _ => new Point(b.Left + m, b.Top + m),
         };
-        using var bmp = Brand.RenderStatus(s, flash ?? color);
+        using var bmp = Brand.RenderStatus(s, flash ?? color, badge: 0.34f); // kleiner → Fisch-Auge bleibt sichtbar
         Present(bmp, pos, 235);
     }
 
