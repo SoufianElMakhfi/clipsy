@@ -34,11 +34,13 @@ public static class FfmpegArgs
         int width = height >= 1080 ? 1920 : 1280;
         // Immer in eine feste Box (1920x1080 / 1280x720) skalieren, Seitenverhältnis bleibt; CFR für saubere Clips.
         var post = $"hwdownload,format=bgra,scale={width}:{height}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=bilinear,format=nv12,fps={fps}";
+        // Skalierung schon auf der GPU (spart CPU); dup_frames hält den Takt, wenn das Spiel kurz keine Frames liefert.
+        var gfx = $"max_framerate={fps}:capture_cursor=1:display_border=0:dup_frames=1:width={width}:height={height}:resize_mode=scale_aspect";
         return src.Mode switch
         {
             // Windows.Graphics.Capture auf das Spielfenster: andere Fenster (Discord-Overlay, Clipsy-Punkt …) sind NICHT im Bild.
-            CaptureMode.Window => $"gfxcapture=hwnd={S(src.Handle)}:max_framerate={fps}:capture_cursor=1:display_border=0,{post}",
-            CaptureMode.Monitor => $"gfxcapture=hmonitor={S(src.Handle)}:max_framerate={fps}:capture_cursor=1:display_border=0,{post}",
+            CaptureMode.Window => $"gfxcapture=hwnd={S(src.Handle)}:{gfx},{post}",
+            CaptureMode.Monitor => $"gfxcapture=hmonitor={S(src.Handle)}:{gfx},{post}",
             _ => $"ddagrab=output_idx={src.OutputIndex}:framerate={fps}:draw_mouse=1,{post}",
         };
     }

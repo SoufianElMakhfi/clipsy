@@ -43,13 +43,15 @@ jobs:
           & $ff -hide_banner -version | Select-Object -First 1
           $help = (& $ff -hide_banner -h filter=gfxcapture) | Out-String
           Write-Output $help
-          foreach ($opt in 'hwnd','hmonitor','max_framerate','capture_cursor','display_border') {
+          foreach ($opt in 'hwnd','hmonitor','max_framerate','capture_cursor','display_border','dup_frames','resize_mode','scale_aspect') {
             if ($help -notmatch "\b$opt\b") { throw "gfxcapture-Option fehlt: $opt" }
           }
           "ffmpeg SHA256: " + (Get-FileHash $ff -Algorithm SHA256).Hash
 
       - uses: actions/upload-artifact@v4
+        continue-on-error: true   # Artefakt-Kontingent kann voll sein; das Release-ZIP ist der eigentliche Download
         with:
+          retention-days: 3
           name: Clipsy-win64
           path: out/Clipsy
 

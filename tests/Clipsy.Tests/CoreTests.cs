@@ -37,6 +37,7 @@ public class FfmpegArgsTests
     {
         var g = FfmpegArgs.VideoGraph(new CaptureSource(CaptureMode.Window, 12345, 0), 1080, 60);
         Assert.StartsWith("gfxcapture=hwnd=12345:", g);
+        Assert.Contains("width=1920:height=1080:resize_mode=scale_aspect", g);
         Assert.Contains("scale=1920:1080", g);
         Assert.EndsWith("fps=60", g);
     }
