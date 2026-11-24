@@ -95,11 +95,49 @@ public class FfmpegArgsTests
     }
 
     [Theory]
-    [InlineData(1080, 60, false, 16000)]
-    [InlineData(1080, 60, true, 12000)]
-    [InlineData(720, 30, false, 5200)]
-    public void Bitrate_caps(int h, int fps, bool hevc, int expected) =>
-        Assert.Equal(expected, FfmpegArgs.BitrateKbps(h, fps, hevc));
+    [InlineData(1080, 60, "h264_amf", 16000)]
+    [InlineData(1080, 60, "hevc_amf", 12000)]
+    [InlineData(1080, 60, "av1_nvenc", 9000)]
+    [InlineData(720, 30, "libx264", 5200)]
+    public void Bitrate_caps(int h, int fps, string enc, int expected) =>
+        Assert.Equal(expected, FfmpegArgs.BitrateKbps(h, fps, enc));
+
+    [Fact]
+    public void Auto_prefers_av1_then_hevc_then_h264()
+    {
+        var c = EncoderProbe.Candidates("auto").ToList();
+        Assert.Equal("av1_nvenc", c[0]);
+        Assert.True(c.IndexOf("av1_qsv") < c.IndexOf("hevc_nvenc"));
+        Assert.True(c.IndexOf("hevc_qsv") < c.IndexOf("h264_nvenc"));
+        Assert.Equal("libx264", c[^1]);
+        Assert.DoesNotContain(EncoderProbe.Candidates("hevc"), e => e.StartsWith("av1"));
+    }
+
+    [Fact]
+    public void Av1_records_into_live_mkv_segments()
+    {
+        var a = FfmpegArgs.Record(new CaptureSource(CaptureMode.Window, 1, 0), [], "av1_nvenc", 1080, 60, 30, "seg%03d.mkv");
+        Assert.Equal("matroska", a[a.IndexOf("-segment_format") + 1]);
+        Assert.Equal("live=1", a[a.IndexOf("-segment_format_options") + 1]);
+        Assert.Equal("mkv", FfmpegArgs.SegmentExtension("av1_amf"));
+        Assert.Equal("ts", FfmpegArgs.SegmentExtension("hevc_nvenc"));
+    }
+
+    [Fact]
+    public void Hevc_records_into_mpegts_segments()
+    {
+        var a = FfmpegArgs.Record(new CaptureSource(CaptureMode.Window, 1, 0), [], "hevc_nvenc", 1080, 60, 30, "seg%03d.ts");
+        Assert.Equal("mpegts", a[a.IndexOf("-segment_format") + 1]);
+        Assert.DoesNotContain("-segment_format_options", a);
+    }
+
+    [Fact]
+    public void Av1_clip_uses_concat_list()
+    {
+        var a = FfmpegArgs.ConcatList("list.txt", "o.mp4");
+        Assert.Equal("concat", a[a.IndexOf("-f") + 1]);
+        Assert.Equal("list.txt", a[a.IndexOf("-i") + 1]);
+    }
 
     [Fact]
     public void Amf_uses_quality_based_rate_control()
@@ -209,7 +247,7 @@ public class SettingsTests
         Assert.Equal(1080, s.Height);
         Assert.Equal(60, s.Fps);
         Assert.Equal("F10", s.ClipHotkey);
-        Assert.Equal("hevc", s.Codec);
+        Assert.Equal("auto", s.Codec);
         Assert.False(s.PostCompress); // nur auf Wunsch
         Assert.True(s.Autostart);
         Assert.Equal(AudioDevices.Auto, s.AudioOutput);

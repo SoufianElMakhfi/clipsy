@@ -19,14 +19,18 @@ public static class FfmpegArgs
     static string S(long v) => v.ToString(CultureInfo.InvariantCulture);
 
     public static bool IsHevc(string encoder) => encoder.StartsWith("hevc", StringComparison.Ordinal);
+    public static bool IsAv1(string encoder) => encoder.StartsWith("av1", StringComparison.Ordinal);
+
+    /// <summary>MPEG-TS kann kein AV1 → für AV1 Matroska im Live-Modus (auch halb geschriebene Segmente lesbar).</summary>
+    public static string SegmentExtension(string encoder) => IsAv1(encoder) ? "mkv" : "ts";
 
     /// <summary>
     /// Obergrenze der Bitrate. Kodiert wird qualitätsbasiert (ruhige Szenen = wenig MB),
-    /// die Grenze greift nur bei sehr unruhigen Szenen. HEVC braucht für gleiche Qualität ~40 % weniger.
+    /// die Grenze greift nur bei sehr unruhigen Szenen. HEVC braucht für gleiche Qualität ~40 % weniger, AV1 noch weniger.
     /// </summary>
-    public static int BitrateKbps(int height, int fps, bool hevc = false)
+    public static int BitrateKbps(int height, int fps, string encoder = "h264")
     {
-        double kbps = hevc ? 12000 : 16000;           // 1080p60
+        double kbps = IsAv1(encoder) ? 9000 : IsHevc(encoder) ? 12000 : 16000;   // 1080p60
         if (height < 1080) kbps *= 0.5;
         if (fps < 60) kbps *= 0.65;
         return (int)kbps;
@@ -61,6 +65,12 @@ public static class FfmpegArgs
         string max = $"{maxKbps}k", target = $"{maxKbps * 2 / 3}k", buf = $"{maxKbps * 2}k";
         return encoder switch
         {
+            // AV1 (RTX 40/50, RX 7000/9000, Intel Arc) – auf Clipsys Test-PC nicht vorhanden; der Encoder-Test
+            // beim Start prüft genau diese Optionen und fällt sonst automatisch auf HEVC zurück.
+            "av1_nvenc" => ["-c:v", "av1_nvenc", "-preset", "p5", "-tune", "hq", "-rc", "vbr", "-cq", "30", "-b:v", "0", "-maxrate", max, "-bufsize", buf],
+            "av1_amf" => ["-c:v", "av1_amf", "-usage", "transcoding", "-quality", "quality", "-rc", "qvbr",
+                          "-qvbr_quality_level", "23", "-b:v", target, "-maxrate", max],
+            "av1_qsv" => ["-c:v", "av1_qsv", "-preset", "faster", "-global_quality", "28", "-maxrate", max],
             "hevc_nvenc" => ["-c:v", "hevc_nvenc", "-preset", "p5", "-tune", "hq", "-rc", "vbr", "-cq", "25", "-b:v", "0", "-maxrate", max, "-bufsize", buf],
             "h264_nvenc" => ["-c:v", "h264_nvenc", "-preset", "p5", "-tune", "hq", "-rc", "vbr", "-cq", "22", "-b:v", "0", "-maxrate", max, "-bufsize", buf],
             "hevc_amf" or "h264_amf" => ["-c:v", encoder, "-usage", "transcoding", "-quality", "quality", "-rc", "qvbr",
@@ -99,15 +109,27 @@ public static class FfmpegArgs
             a.AddRange(["-filter_complex", graph, "-map", "[aout]"]);
         }
 
-        a.AddRange(EncoderArgs(encoder, BitrateKbps(height, fps, IsHevc(encoder))));
+        a.AddRange(EncoderArgs(encoder, BitrateKbps(height, fps, encoder)));
         a.AddRange(["-g", S(fps), "-bf", "0"]); // 1 Keyframe/Sekunde → sauber schneidbare Segmente
         if (audio.Count > 0) a.AddRange(["-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2"]);
 
         a.AddRange(["-max_muxing_queue_size", "4096",
             "-f", "segment", "-segment_time", S(SegmentSeconds), "-segment_wrap", S(SegmentSlots(clipSeconds)),
-            "-segment_format", "mpegts", "-reset_timestamps", "0", outputPattern]);
+            "-reset_timestamps", "0"]);
+        if (IsAv1(encoder)) a.AddRange(["-segment_format", "matroska", "-segment_format_options", "live=1"]);
+        else a.AddRange(["-segment_format", "mpegts"]);
+        a.Add(outputPattern);
         return a;
     }
+
+    /// <summary>MKV-Segmente (AV1) über eine Liste zusammenfügen – Liste: Zeilen "file 'segNNN.mkv'".</summary>
+    public static List<string> ConcatList(string listFile, string outputPath) =>
+    [
+        "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "concat", "-safe", "0", "-i", listFile,
+        "-map", "0", "-c", "copy", "-avoid_negative_ts", "make_zero", "-movflags", "+faststart",
+        "-f", "mp4", outputPath,
+    ];
 
     /// <summary>Segmente (Dateinamen relativ zum Arbeitsordner) ohne Neu-Encoding zu einer MP4 zusammenfügen.</summary>
     public static List<string> Concat(IEnumerable<string> segmentNames, string outputPath, bool hevc = false)
@@ -175,10 +197,19 @@ internal static class FfmpegLocator
 
 internal static class EncoderProbe
 {
-    /// <summary>Reihenfolge: NVIDIA → AMD → Intel. HEVC fällt auf H.264 zurück, wenn die GPU kein HEVC kann.</summary>
-    public static IReadOnlyList<string> Candidates(string codec) => codec == "hevc"
-        ? ["hevc_nvenc", "hevc_amf", "hevc_qsv", "h264_nvenc", "h264_amf", "h264_qsv", "libx264"]
-        : ["h264_nvenc", "h264_amf", "h264_qsv", "libx264"];
+    static readonly string[] av1 = ["av1_nvenc", "av1_amf", "av1_qsv"];
+    static readonly string[] hevc = ["hevc_nvenc", "hevc_amf", "hevc_qsv"];
+    static readonly string[] h264 = ["h264_nvenc", "h264_amf", "h264_qsv", "libx264"];
+
+    /// <summary>
+    /// Reihenfolge je Format: NVIDIA → AMD → Intel. "auto" = AV1, wenn die Grafikkarte es kann, sonst HEVC, sonst H.264.
+    /// </summary>
+    public static IReadOnlyList<string> Candidates(string codec) => codec switch
+    {
+        "auto" => [.. av1, .. hevc, .. h264],
+        "hevc" => [.. hevc, .. h264],
+        _ => h264,
+    };
 
     /// <summary>Erster Encoder, der auf diesem PC wirklich funktioniert; sonst CPU (libx264).</summary>
     public static string Detect(string ffmpeg, string codec)

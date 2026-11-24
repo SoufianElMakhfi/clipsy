@@ -110,7 +110,8 @@ internal sealed class TrayApp : ApplicationContext
             if (path is not null)
             {
                 if (settings.ClipSound) SystemSounds.Asterisk.Play();
-                if (settings.PostCompress) compressor?.Enqueue(path);
+                // Schon als AV1 aufgenommen (RTX 40/50 usw.) → Nachkomprimieren bringt nichts
+                if (settings.PostCompress && !FfmpegArgs.IsAv1(recorder.Encoder ?? "")) compressor?.Enqueue(path);
                 overlay.Flash(Color.DeepSkyBlue);
             }
             else

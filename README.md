@@ -16,8 +16,9 @@ auf Tastendruck die letzten Sekunden als MP4.
 - **Audiogeräte:** Spiel-Sound und Mikrofon wählbar – „Automatisch“ bevorzugt USB-Geräte (Headset, USB-Mikro),
   sonst Windows-Standard; Ein-/Ausstecken wird erkannt. Mikrofon ist standardmäßig aus.
 - **Clip-Ordner öffnen** direkt aus Tray-Menü oder Einstellungen
-- Hardware-Encoding automatisch (NVIDIA NVENC → AMD AMF → Intel QSV → CPU), HEVC qualitätsbasiert
-  (30-s-Clip 1080p60 ≈ 22 MB statt 71 MB, ohne sichtbaren Unterschied); H.264 wählbar
+- Hardware-Encoding automatisch (NVIDIA NVENC → AMD AMF → Intel QSV → CPU), qualitätsbasiert.
+  Format „Automatisch“: **AV1**, wenn die Grafikkarte es kann (RTX 40/50, RX 7000/9000, Intel Arc),
+  sonst **HEVC** (30-s-Clip 1080p60 ≈ 22 MB statt 71 MB, ohne sichtbaren Unterschied), sonst H.264
 - **Nachkomprimieren (optional):** Clips werden im Hintergrund zu AV1 umgerechnet (≈ 60 % kleiner),
   nur wenn kein Spiel läuft, mit niedrigster Priorität. Original wird erst ersetzt, wenn AV1 fertig und kleiner ist.
 

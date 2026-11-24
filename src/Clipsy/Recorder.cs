@@ -186,7 +186,7 @@ internal sealed class Recorder : IDisposable
                     : new CaptureSource(CaptureMode.Monitor, t.Monitor.ToInt64(), t.OutputIndex);
 
             var args = FfmpegArgs.Record(src, pumps.Select(x => x.Input).ToList(), encoder!, settings.Height, settings.Fps,
-                                         settings.ClipSeconds, Path.Combine(dir, "seg%03d.ts"));
+                                         settings.ClipSeconds, Path.Combine(dir, "seg%03d." + FfmpegArgs.SegmentExtension(encoder!)));
             var psi = new ProcessStartInfo(ffmpeg)
             {
                 UseShellExecute = false,
@@ -247,7 +247,8 @@ internal sealed class Recorder : IDisposable
         var clipSeconds = settings.ClipSeconds;
         var folder = settings.OutputFolder;
 
-        var files = new DirectoryInfo(s.Dir).GetFiles("seg*.ts").Select(f => (f.Name, f.LastWriteTimeUtc));
+        var ext = FfmpegArgs.SegmentExtension(s.Encoder);
+        var files = new DirectoryInfo(s.Dir).GetFiles("seg*." + ext).Select(f => (f.Name, f.LastWriteTimeUtc));
         var selected = SegmentSelector.Select(files, DateTime.UtcNow, clipSeconds, FfmpegArgs.SegmentSeconds);
         if (selected.Count == 0) return null;
 
@@ -262,7 +263,15 @@ internal sealed class Recorder : IDisposable
             WorkingDirectory = s.Dir,
             RedirectStandardError = true,
         };
-        foreach (var a in FfmpegArgs.Concat(selected, outPath, FfmpegArgs.IsHevc(s.Encoder))) psi.ArgumentList.Add(a);
+        List<string> concatArgs;
+        if (FfmpegArgs.IsAv1(s.Encoder))
+        {
+            var list = Path.Combine(s.Dir, "list.txt");
+            await File.WriteAllLinesAsync(list, selected.Select(n => $"file '{n}'"));
+            concatArgs = FfmpegArgs.ConcatList("list.txt", outPath);
+        }
+        else concatArgs = FfmpegArgs.Concat(selected, outPath, FfmpegArgs.IsHevc(s.Encoder));
+        foreach (var a in concatArgs) psi.ArgumentList.Add(a);
 
         using var p = Process.Start(psi)!;
         Native.KillWithApp(p);
@@ -271,8 +280,11 @@ internal sealed class Recorder : IDisposable
         try { await p.WaitForExitAsync(cts.Token); }
         catch (OperationCanceledException) { try { p.Kill(true); } catch { } }
 
-        if (p.HasExited && p.ExitCode == 0 && File.Exists(outPath))
+        // Das gerade noch geschriebene letzte Segment ist "unvollständig" → ffmpeg meldet das u. U. mit Code ≠ 0,
+        // der Clip ist trotzdem korrekt. Maßgeblich ist daher: fertig beendet und eine echte Datei entstanden.
+        if (p.HasExited && File.Exists(outPath) && new FileInfo(outPath).Length > 64 * 1024)
         {
+            if (p.ExitCode != 0) Log.Write($"Clip mit Hinweis gespeichert (Code {p.ExitCode}): {(await err).Trim()}");
             Log.Write($"Clip gespeichert: {name}");
             return outPath;
         }
@@ -322,7 +334,7 @@ internal sealed class Recorder : IDisposable
         public bool HasSegments()
         {
             if (hasSegments) return true;
-            try { hasSegments = Directory.EnumerateFiles(Dir, "seg*.ts").Skip(1).Any(); } catch { }
+            try { hasSegments = Directory.EnumerateFiles(Dir, "seg*." + FfmpegArgs.SegmentExtension(Encoder)).Skip(1).Any(); } catch { }
             return hasSegments;
         }
 
