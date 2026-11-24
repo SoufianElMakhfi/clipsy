@@ -1,0 +1,63 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Tests
+        run: dotnet test tests/Clipsy.Tests/Clipsy.Tests.csproj -c Release
+
+      - name: Publish (eine EXE, ohne .NET-Installation lauffähig)
+        run: >
+          dotnet publish src/Clipsy/Clipsy.csproj -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true -o out/Clipsy
+
+      - name: ffmpeg bündeln + gfxcapture prüfen
+        shell: pwsh
+        run: |
+          $u = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          Invoke-WebRequest $u -OutFile ff.zip
+          Expand-Archive ff.zip ffx
+          $exe = Get-ChildItem ffx -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          New-Item -ItemType Directory out/Clipsy/ffmpeg | Out-Null
+          Copy-Item $exe.FullName out/Clipsy/ffmpeg/ffmpeg.exe
+          Copy-Item (Join-Path $exe.Directory.Parent.FullName 'LICENSE.txt') out/Clipsy/ffmpeg/ -ErrorAction SilentlyContinue
+          $ff = "out/Clipsy/ffmpeg/ffmpeg.exe"
+          & $ff -hide_banner -version | Select-Object -First 1
+          $help = (& $ff -hide_banner -h filter=gfxcapture) | Out-String
+          Write-Output $help
+          foreach ($opt in 'hwnd','hmonitor','max_framerate','capture_cursor','display_border') {
+            if ($help -notmatch "\b$opt\b") { throw "gfxcapture-Option fehlt: $opt" }
+          }
+          "ffmpeg SHA256: " + (Get-FileHash $ff -Algorithm SHA256).Hash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Clipsy-win64
+          path: out/Clipsy
+
+      - name: Release (nur bei Tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Compress-Archive out/Clipsy/* Clipsy-win64.zip
+          gh release create $env:GITHUB_REF_NAME Clipsy-win64.zip --generate-notes --title "Clipsy $env:GITHUB_REF_NAME"

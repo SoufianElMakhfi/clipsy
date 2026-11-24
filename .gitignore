@@ -1,0 +1,11 @@
+bin/
+obj/
+out/
+.vs/
+*.user
+*.zip
+ffmpeg/
+ffmpeg.exe
+.env
+.env.*
+*.log
