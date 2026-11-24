@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Clipsy</title>
+<style>
+  :root {
+    --bg: #0c0716;
+    --side: #120a20;
+    --card: #181026;
+    --card-hi: #20162f;
+    --line: rgba(255,255,255,.07);
+    --line-hi: rgba(255,255,255,.14);
+    --text: #f2eefa;
+    --muted: #9a8fb3;
+    --dim: #6c6283;
+    --cyan: #05faf5;
+    --cyan-soft: rgba(5,250,245,.12);
+    --pink: #f9436c;
+    --green: #2ed573;
+    --red: #ff4757;
+    --orange: #ffa801;
+    --radius: 14px;
+    --ease: cubic-bezier(.2,.8,.2,1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+    font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; user-select: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  ::-webkit-scrollbar { width: 10px; } ::-webkit-scrollbar-thumb { background: #2a2040; border-radius: 10px; border: 3px solid var(--bg); }
+
+  .app { display: grid; grid-template-columns: 236px 1fr; height: 100%; }
+
+  /* ---------- Seitenleiste ---------- */
+  .side { background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 22px 14px 16px; }
+  .brand { display: flex; align-items: center; gap: 12px; padding: 0 8px 18px; }
+  .brand img { width: 42px; height: 42px; border-radius: 11px; box-shadow: 0 6px 22px rgba(5,250,245,.18); }
+  .brand b { font: 700 20px/1 "Segoe UI Variable Display", "Segoe UI", sans-serif; letter-spacing: .2px; }
+  .brand small { display: block; color: var(--dim); font-size: 11.5px; margin-top: 4px; }
+  .pill { display: flex; align-items: center; gap: 8px; margin: 0 6px 18px; padding: 9px 12px; border-radius: 10px;
+    background: rgba(255,255,255,.04); border: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--orange); box-shadow: 0 0 0 4px rgba(255,168,1,.15); transition: .3s; }
+  .dot.on { background: var(--green); box-shadow: 0 0 0 4px rgba(46,213,115,.15), 0 0 12px rgba(46,213,115,.6); animation: pulse 2.4s infinite; }
+  .dot.off { background: var(--red); box-shadow: 0 0 0 4px rgba(255,71,87,.15); }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(46,213,115,.06), 0 0 14px rgba(46,213,115,.8); } }
+  nav { display: flex; flex-direction: column; gap: 2px; }
+  nav button { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; color: var(--muted);
+    text-align: left; transition: background .15s, color .15s; position: relative; }
+  nav button:hover { background: rgba(255,255,255,.04); color: var(--text); }
+  nav button.active { background: var(--cyan-soft); color: var(--text); }
+  nav button.active::before { content: ""; position: absolute; left: -14px; top: 9px; bottom: 9px; width: 3px; border-radius: 3px; background: var(--cyan); }
+  nav svg { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  nav button.active svg { stroke: var(--cyan); }
+  .side .grow { flex: 1; }
+  .ghost { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; border-radius: 10px;
+    border: 1px solid var(--line-hi); color: var(--text); transition: .15s; }
+  .ghost:hover { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.25); }
+  .ghost svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+  /* ---------- Inhalt ---------- */
+  main { overflow-y: auto; padding: 30px 38px 40px; position: relative; }
+  .page { display: none; max-width: 720px; animation: in .28s var(--ease); }
+  .page.active { display: block; }
+  @keyframes in { from { opacity: 0; transform: translateY(6px); } }
+  h1 { font: 650 26px/1.2 "Segoe UI Variable Display", "Segoe UI", sans-serif; margin-bottom: 6px; }
+  .lead { color: var(--muted); margin-bottom: 24px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 20px; margin-bottom: 16px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 0; }
+  .row + .row { border-top: 1px solid var(--line); }
+  .row .label b { display: block; font-weight: 600; }
+  .row .label span { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; max-width: 360px; }
+  .row.stack { flex-direction: column; align-items: stretch; gap: 12px; }
+
+  /* Segment-Kacheln */
+  .seg { display: inline-flex; background: #0f0a1a; border: 1px solid var(--line); border-radius: 11px; padding: 3px; gap: 3px; flex-wrap: wrap; }
+  .seg button { padding: 7px 14px; border-radius: 8px; color: var(--muted); font-weight: 600; font-size: 13px; transition: .18s var(--ease); white-space: nowrap; }
+  .seg button:hover { color: var(--text); }
+  .seg button.on { background: var(--cyan); color: #0b0614; box-shadow: 0 4px 16px rgba(5,250,245,.25); }
+
+  /* Schalter */
+  .switch { position: relative; width: 44px; height: 24px; flex: none; cursor: pointer; }
+  .switch input { display: none; }
+  .switch span { position: absolute; inset: 0; border-radius: 24px; background: #2b2140; transition: .2s var(--ease); }
+  .switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #cfc6e3; transition: .2s var(--ease); }
+  .switch input:checked + span { background: var(--cyan); }
+  .switch input:checked + span::after { transform: translateX(20px); background: #0b0614; }
+
+  /* Eigenes Dropdown */
+  .select { position: relative; min-width: 300px; }
+  .select > button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px;
+    background: #0f0a1a; border: 1px solid var(--line-hi); text-align: left; transition: .15s; }
+  .select > button:hover, .select.open > button { border-color: rgba(5,250,245,.5); }
+  .select > button .v { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .select > button svg { width: 14px; height: 14px; stroke: var(--muted); fill: none; stroke-width: 2; transition: transform .2s; flex: none; }
+  .select.open > button svg { transform: rotate(180deg); }
+  .menu { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; right: 0; min-width: 100%; max-height: 280px; overflow-y: auto;
+    background: #1d1430; border: 1px solid var(--line-hi); border-radius: 12px; padding: 6px; box-shadow: 0 18px 50px rgba(0,0,0,.55);
+    opacity: 0; transform: translateY(-4px) scale(.98); pointer-events: none; transition: .16s var(--ease); }
+  .select.open .menu { opacity: 1; transform: none; pointer-events: auto; }
+  .menu button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; text-align: left; }
+  .menu button:hover { background: rgba(255,255,255,.06); }
+  .menu button.sel { color: var(--cyan); }
+  .menu button .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .menu .sep { height: 1px; background: var(--line); margin: 5px 6px; }
+  .badge { font-style: normal; font-size: 10.5px; font-weight: 700; letter-spacing: .4px; padding: 2px 7px; border-radius: 6px; background: var(--cyan-soft); color: var(--cyan); flex: none; }
+  .badge.pink { background: rgba(249,67,108,.14); color: var(--pink); }
+  .badge.grey { background: rgba(255,255,255,.07); color: var(--muted); }
+
+  /* Tasten-Feld */
+  .key { min-width: 190px; padding: 9px 14px; border-radius: 10px; background: #0f0a1a; border: 1px dashed var(--line-hi);
+    display: flex; gap: 6px; align-items: center; justify-content: center; transition: .15s; }
+  .key:hover { border-color: rgba(5,250,245,.5); }
+  .key.rec { border-style: solid; border-color: var(--pink); box-shadow: 0 0 0 4px rgba(249,67,108,.12); }
+  kbd { font: 600 12.5px "Segoe UI", sans-serif; padding: 3px 9px; border-radius: 6px; background: #261b3a; border: 1px solid #3a2d55; border-bottom-width: 3px; }
+  .key .hint { color: var(--muted); font-size: 12.5px; }
+
+  /* Ordner */
+  .path { display: flex; gap: 8px; align-items: center; }
+  .path code { flex: 1; font: 12.5px "Cascadia Mono", Consolas, monospace; color: var(--muted); background: #0f0a1a; border: 1px solid var(--line);
+    padding: 10px 12px; border-radius: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
+  .btn { padding: 9px 16px; border-radius: 10px; font-weight: 600; background: #2a1f40; border: 1px solid var(--line-hi); transition: .15s; white-space: nowrap; }
+  .btn:hover { background: #33264d; }
+  .btn.primary { background: var(--cyan); color: #0b0614; border-color: transparent; box-shadow: 0 6px 20px rgba(5,250,245,.22); }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.danger { background: rgba(255,71,87,.14); color: #ff7b87; border-color: rgba(255,71,87,.3); }
+
+  /* Hinweis-Banner */
+  .note { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; font-size: 13px; margin-top: 4px; }
+  .note.ok { background: rgba(46,213,115,.08); color: #7be3a6; border: 1px solid rgba(46,213,115,.2); }
+  .note.warn { background: rgba(255,168,1,.08); color: #ffc85a; border: 1px solid rgba(255,168,1,.22); }
+  .note a { color: var(--cyan); cursor: pointer; font-weight: 600; text-decoration: none; }
+  .note a:hover { text-decoration: underline; }
+
+  /* Übersicht */
+  .hero { display: flex; align-items: center; gap: 26px; padding: 26px; border-radius: 18px; margin-bottom: 16px;
+    background: radial-gradient(120% 140% at 0% 0%, rgba(5,250,245,.10), transparent 55%), radial-gradient(90% 120% at 100% 100%, rgba(249,67,108,.10), transparent 60%), var(--card);
+    border: 1px solid var(--line); }
+  .ring { width: 96px; height: 96px; border-radius: 26px; display: grid; place-items: center; position: relative; flex: none; }
+  .ring img { width: 78px; height: 78px; border-radius: 20px; }
+  .ring::after { content: ""; position: absolute; inset: -5px; border-radius: 30px; border: 2px solid var(--orange); opacity: .8; transition: .3s; }
+  .ring.on::after { border-color: var(--green); box-shadow: 0 0 28px rgba(46,213,115,.35); }
+  .ring.off::after { border-color: var(--red); box-shadow: 0 0 22px rgba(255,71,87,.25); }
+  .hero h2 { font: 650 22px/1.2 "Segoe UI Variable Display", "Segoe UI", sans-serif; }
+  .hero p { color: var(--muted); margin: 4px 0 14px; }
+  .hero .actions { display: flex; gap: 10px; }
+  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .fact { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
+  .fact span { color: var(--muted); font-size: 12px; display: block; }
+  .fact b { display: block; font-size: 16px; margin-top: 3px; }
+
+  /* Ecken-Wähler */
+  .pickers { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .screen { position: relative; aspect-ratio: 16/9; border-radius: 10px; background: linear-gradient(135deg, #22183a, #140d24); border: 1px solid var(--line-hi); margin-top: 10px; }
+  .screen .taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 11%; background: rgba(255,255,255,.06); border-radius: 0 0 10px 10px; }
+  .spot { position: absolute; width: 22px; height: 22px; border-radius: 7px; border: 1.5px dashed rgba(255,255,255,.25); transition: .18s var(--ease); }
+  .spot:hover { border-color: var(--cyan); }
+  .spot.on { border: 0; background-position: center; background-size: cover; box-shadow: 0 0 0 2px var(--cyan), 0 0 16px rgba(5,250,245,.5); }
+  .spot.toast { width: 34%; height: 15%; border-radius: 5px; }
+  .spot.toast.on { background: linear-gradient(90deg, var(--green) 0 6%, #2a1f40 6%); }
+  .tl { top: 8px; left: 8px; } .tr { top: 8px; right: 8px; } .bl { bottom: 8px; left: 8px; } .br { bottom: 8px; right: 8px; }
+  .br.toast { bottom: calc(11% + 6px); }
+  .pick-title { display: flex; justify-content: space-between; align-items: center; }
+  .disabled { opacity: .35; pointer-events: none; filter: grayscale(1); }
+
+  /* Speicher-Hinweis oben rechts */
+  .saved { position: fixed; top: 18px; right: 24px; display: flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 9px;
+    background: rgba(46,213,115,.1); color: #7be3a6; font-size: 12.5px; font-weight: 600; opacity: 0; transform: translateY(-6px); transition: .25s var(--ease); pointer-events: none; }
+  .saved.show { opacity: 1; transform: none; }
+  .saved.err { background: rgba(255,71,87,.12); color: #ff8a95; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><img id="logo" alt=""><div><b>Clipsy</b><small id="version"></small></div></div>
+    <div class="pill"><i class="dot" id="sdot"></i><span id="stext">Startet …</span></div>
+    <nav id="nav">
+      <button data-p="home" class="active"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Übersicht</button>
+      <button data-p="rec"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg>Aufnahme</button>
+      <button data-p="audio"><svg viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></svg>Ton</button>
+      <button data-p="keys"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>Tasten</button>
+      <button data-p="save"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Speichern</button>
+      <button data-p="view"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Anzeige</button>
+    </nav>
+    <div class="grow"></div>
+    <button class="ghost" data-act="openFolder"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Clip-Ordner öffnen</button>
+  </aside>
+
+  <main>
+    <div class="saved" id="saved">✓ Gespeichert</div>
+
+    <!-- Übersicht -->
+    <section class="page active" id="p-home">
+      <div class="hero">
+        <div class="ring" id="ring"><img id="logo2" alt=""></div>
+        <div>
+          <h2 id="htitle">Clipsy startet …</h2>
+          <p id="hsub"></p>
+          <div class="actions">
+            <button class="btn primary" id="toggle">Pausieren</button>
+            <button class="btn" data-act="openFolder">Clip-Ordner</button>
+          </div>
+        </div>
+      </div>
+      <div class="facts">
+        <div class="fact"><span>Clip-Taste</span><b id="f-key">F10</b></div>
+        <div class="fact"><span>Clip-Länge</span><b id="f-len">30 s</b></div>
+        <div class="fact"><span>Aufnahme</span><b id="f-enc">–</b></div>
+      </div>
+      <div id="homeNote"></div>
+    </section>
+
+    <!-- Aufnahme -->
+    <section class="page" id="p-rec">
+      <h1>Aufnahme</h1>
+      <p class="lead">Clipsy nimmt nur das Spielfenster auf – Overlays wie Discord bleiben draußen.</p>
+      <div class="card">
+        <div class="row"><div class="label"><b>Qualität</b><span>1080p ist Standard, kein 4K.</span></div><div class="seg" data-k="height" data-o='[[720,"720p"],[1080,"1080p"]]'></div></div>
+        <div class="row"><div class="label"><b>Bildrate</b><span>60 FPS für flüssige Clips.</span></div><div class="seg" data-k="fps" data-o='[[30,"30 FPS"],[60,"60 FPS"]]'></div></div>
+        <div class="row stack"><div class="label"><b>Clip-Länge</b><span>So viel wird beim Drücken der Clip-Taste rückwirkend gespeichert.</span></div>
+          <div class="seg" data-k="clipSeconds" data-o='[[15,"15 s"],[30,"30 s"],[45,"45 s"],[60,"1 Min"],[90,"1,5 Min"],[120,"2 Min"],[180,"3 Min"],[300,"5 Min"]]'></div></div>
+      </div>
+      <div class="card">
+        <div class="row"><div class="label"><b>Format</b><span>Automatisch nimmt AV1, wenn die Grafikkarte es kann (RTX 40/50, RX 7000+, Arc), sonst HEVC.</span></div><div class="select" id="codec"></div></div>
+        <div class="row stack" id="codecRow" style="padding-top:0"><div id="codecNote"></div></div>
+      </div>
+    </section>
+
+    <!-- Ton -->
+    <section class="page" id="p-audio">
+      <h1>Ton</h1>
+      <p class="lead">„Automatisch“ bevorzugt USB-Geräte wie Headsets und USB-Mikros – Ein- und Ausstecken wird erkannt.</p>
+      <div class="card">
+        <div class="row"><div class="label"><b>Spiel-Sound</b><span>Was du hörst, landet im Clip.</span></div><div class="select" id="out"></div></div>
+        <div class="row"><div class="label"><b>Mikrofon</b><span>Standardmäßig aus – nimmt sonst auch Gespräche im Raum auf.</span></div><div class="select" id="mic"></div></div>
+      </div>
+    </section>
+
+    <!-- Tasten -->
+    <section class="page" id="p-keys">
+      <h1>Tasten</h1>
+      <p class="lead">Feld anklicken und die neue Kombination drücken. Entf oder Esc entfernt sie.</p>
+      <div class="card">
+        <div class="row"><div class="label"><b>Clip speichern</b><span>Funktioniert auch mitten im Spiel.</span></div><button class="key" data-k="clipHotkey"></button></div>
+        <div class="row"><div class="label"><b>Clipsy an / aus</b><span>Nach einem PC-Neustart ist Clipsy immer wieder an.</span></div><button class="key" data-k="toggleHotkey" data-none="1"></button></div>
+      </div>
+    </section>
+
+    <!-- Speichern -->
+    <section class="page" id="p-save">
+      <h1>Speichern</h1>
+      <p class="lead">Wo deine Clips landen und wie klein sie werden.</p>
+      <div class="card">
+        <div class="row stack"><div class="label"><b>Clip-Ordner</b></div>
+          <div class="path"><code id="folder"></code><button class="btn" data-act="browse">Ändern</button><button class="btn" data-act="openFolder">Öffnen</button></div></div>
+      </div>
+      <div class="card">
+        <div class="row"><div class="label"><b>Clips nachkomprimieren <i class="badge pink" style="font-style:normal">AV1</i></b>
+          <span>Rechnet gespeicherte Clips im Hintergrund um – ca. 60 % kleiner, ohne sichtbaren Unterschied. Läuft nur, wenn kein Spiel offen ist.</span></div>
+          <label class="switch"><input type="checkbox" data-k="postCompress"><span></span></label></div>
+      </div>
+    </section>
+
+    <!-- Anzeige -->
+    <section class="page" id="p-view">
+      <h1>Anzeige</h1>
+      <p class="lead">Beides ist nie in deinen Clips zu sehen.</p>
+      <div class="pickers">
+        <div class="card" style="padding:16px 18px">
+          <div class="pick-title"><b>Status-Logo</b><label class="switch"><input type="checkbox" data-k="showOverlay"><span></span></label></div>
+          <div class="screen" id="ovScreen">
+            <button class="spot tl" data-c="0"></button><button class="spot tr" data-c="1"></button>
+            <button class="spot bl" data-c="2"></button><button class="spot br" data-c="3"></button>
+          </div>
+        </div>
+        <div class="card" style="padding:16px 18px">
+          <div class="pick-title"><b>Meldung „Clip gespeichert“</b><label class="switch"><input type="checkbox" data-k="showToast"><span></span></label></div>
+          <div class="screen" id="toScreen"><div class="taskbar"></div>
+            <button class="spot toast tr" data-c="0"></button><button class="spot toast br" data-c="1"></button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row"><div class="label"><b>Ton beim Speichern</b><span>Kurzer Systemton als Bestätigung.</span></div><label class="switch"><input type="checkbox" data-k="clipSound"><span></span></label></div>
+        <div class="row"><div class="label"><b>Mit Windows starten</b><span>Empfohlen – so ist Clippen immer an.</span></div><label class="switch"><input type="checkbox" data-k="autostart"><span></span></label></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const post = m => window.chrome?.webview?.postMessage(m);
+let S = {}, D = { output: [], input: [] }, codecs = null, encoder = null, logo = "";
+
+// ---------- Navigation ----------
+$$("#nav button").forEach(b => b.onclick = () => {
+  $$("#nav button").forEach(x => x.classList.toggle("active", x === b));
+  $$(".page").forEach(p => p.classList.toggle("active", p.id === "p-" + b.dataset.p));
+});
+$$("[data-act]").forEach(b => b.onclick = () => post({ type: b.dataset.act }));
+$("#toggle").onclick = () => post({ type: "toggle" });
+
+// ---------- Speichern ----------
+let saveTimer;
+function save() { clearTimeout(saveTimer); saveTimer = setTimeout(() => post({ type: "save", settings: S }), 250); renderDerived(); }
+function flash(text, err) {
+  const el = $("#saved"); el.textContent = text; el.classList.toggle("err", !!err); el.classList.add("show");
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), err ? 4000 : 1400);
+}
+
+// ---------- Segment-Kacheln ----------
+function initSegs() {
+  $$(".seg").forEach(seg => {
+    const k = seg.dataset.k, opts = JSON.parse(seg.dataset.o);
+    seg.innerHTML = "";
+    for (const [v, t] of opts) {
+      const b = document.createElement("button"); b.textContent = t;
+      b.classList.toggle("on", S[k] === v);
+      b.onclick = () => { S[k] = v; $$("button", seg).forEach(x => x.classList.toggle("on", x === b)); save(); };
+      seg.appendChild(b);
+    }
+  });
+}
+
+// ---------- Schalter ----------
+function initSwitches() {
+  $$(".switch input").forEach(i => {
+    i.checked = !!S[i.dataset.k];
+    i.onchange = () => { S[i.dataset.k] = i.checked; save(); };
+  });
+}
+
+// ---------- Dropdown ----------
+const chevron = '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>';
+function makeSelect(el, items, value, onPick) {
+  const cur = items.find(i => i.v === value) || items[0];
+  el.innerHTML = `<button><span class="v"></span>${cur?.badge ? `<i class="badge">${cur.badge}</i>` : ""}${chevron}</button><div class="menu"></div>`;
+  $(".v", el).textContent = cur ? cur.t : "";
+  const menu = $(".menu", el);
+  for (const it of items) {
+    if (it.sep) { menu.insertAdjacentHTML("beforeend", '<div class="sep"></div>'); continue; }
+    const b = document.createElement("button");
+    b.innerHTML = `<span class="t"></span>${it.badge ? `<i class="badge ${it.badgeCls || ""}">${it.badge}</i>` : ""}`;
+    $(".t", b).textContent = it.t;
+    if (it.v === value) b.classList.add("sel");
+    b.onclick = e => { e.stopPropagation(); el.classList.remove("open"); onPick(it.v); };
+    menu.appendChild(b);
+  }
+  $("button", el).onclick = e => { e.stopPropagation(); const o = el.classList.contains("open"); closeMenus(); if (!o) el.classList.add("open"); };
+}
+function closeMenus() { $$(".select.open").forEach(s => s.classList.remove("open")); }
+document.addEventListener("click", closeMenus);
+
+function deviceItems(list, autoName, value) {
+  const items = [
+    { v: "off", t: "Aus" },
+    { v: "auto", t: "Automatisch" + (autoName ? " – " + autoName : ""), badge: "EMPFOHLEN" },
+    { v: "default", t: "Windows-Standard" },
+    { sep: true },
+    ...list.map(d => ({ v: d.id, t: d.name, badge: d.usb ? "USB" : null })),
+  ];
+  if (!items.some(i => i.v === value)) items.push({ v: value, t: "Gespeichertes Gerät (nicht angeschlossen)", badge: "FEHLT", badgeCls: "grey" });
+  return items;
+}
+function renderSelects() {
+  makeSelect($("#codec"), [
+    { v: "auto", t: "Automatisch", badge: "EMPFOHLEN" },
+    { v: "hevc", t: "H.265 / HEVC" },
+    { v: "h264", t: "H.264 – läuft überall, größere Dateien" },
+  ], S.codec, v => { S.codec = v; renderSelects(); save(); });
+  makeSelect($("#out"), deviceItems(D.output, D.autoOutput, S.audioOutput), S.audioOutput, v => { S.audioOutput = v; renderSelects(); save(); });
+  makeSelect($("#mic"), deviceItems(D.input, D.autoInput, S.microphone), S.microphone, v => { S.microphone = v; renderSelects(); save(); });
+}
+
+// ---------- Tasten ----------
+const keyMap = { Space: "Space", Enter: "Enter", Tab: "Tab", Insert: "Insert", Home: "Home", End: "End", PageUp: "PageUp", PageDown: "PageDown",
+  ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right", Pause: "Pause", ScrollLock: "Scroll", PrintScreen: "PrintScreen",
+  Backquote: "Oemtilde", Minus: "OemMinus", Equal: "Oemplus", BracketLeft: "OemOpenBrackets", BracketRight: "OemCloseBrackets",
+  Semicolon: "OemSemicolon", Quote: "OemQuotes", Comma: "Oemcomma", Period: "OemPeriod", Slash: "OemQuestion", Backslash: "OemBackslash",
+  NumpadAdd: "Add", NumpadSubtract: "Subtract", NumpadMultiply: "Multiply", NumpadDivide: "Divide", NumpadDecimal: "Decimal" };
+function keyName(code) {
+  if (/^F\d{1,2}$/.test(code)) return code;
+  let m;
+  if ((m = code.match(/^Key([A-Z])$/))) return m[1];
+  if ((m = code.match(/^Digit(\d)$/))) return "D" + m[1];
+  if ((m = code.match(/^Numpad(\d)$/))) return "NumPad" + m[1];
+  return keyMap[code] || null;
+}
+function renderKeys() {
+  $$(".key").forEach(b => {
+    const v = S[b.dataset.k];
+    b.innerHTML = v ? v.split("+").map(p => `<kbd>${p}</kbd>`).join("") : '<span class="hint">keine</span>';
+  });
+}
+let recording = null;
+$$(".key").forEach(b => b.onclick = () => {
+  $$(".key").forEach(x => x.classList.remove("rec"));
+  recording = b; b.classList.add("rec"); b.innerHTML = '<span class="hint">Kombination drücken …</span>';
+});
+document.addEventListener("keydown", e => {
+  if (!recording) return;
+  e.preventDefault(); e.stopPropagation();
+  if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) return;
+  const k = recording.dataset.k;
+  if (["Escape", "Delete", "Backspace"].includes(e.code) && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+    if (recording.dataset.none) S[k] = "";
+  } else {
+    const name = keyName(e.code);
+    if (!name) return;
+    const combo = [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", name].filter(Boolean).join("+");
+    const other = k === "clipHotkey" ? S.toggleHotkey : S.clipHotkey;
+    if (other && other.toLowerCase() === combo.toLowerCase()) { flash("Diese Taste ist schon belegt", true); }
+    else S[k] = combo;
+  }
+  recording.classList.remove("rec"); recording = null; renderKeys(); save();
+}, true);
+document.addEventListener("click", e => { if (recording && !recording.contains(e.target)) { recording.classList.remove("rec"); recording = null; renderKeys(); } });
+
+// ---------- Ecken-Wähler ----------
+function renderCorners() {
+  $$("#ovScreen .spot").forEach(b => { b.classList.toggle("on", +b.dataset.c === S.overlayCorner); b.style.backgroundImage = +b.dataset.c === S.overlayCorner ? `url(${logo})` : ""; b.onclick = () => { S.overlayCorner = +b.dataset.c; renderCorners(); save(); }; });
+  $$("#toScreen .spot").forEach(b => { b.classList.toggle("on", +b.dataset.c === S.toastCorner); b.onclick = () => { S.toastCorner = +b.dataset.c; renderCorners(); save(); }; });
+  $("#ovScreen").classList.toggle("disabled", !S.showOverlay);
+  $("#toScreen").classList.toggle("disabled", !S.showToast);
+}
+
+// ---------- Abgeleitetes ----------
+const encLabel = e => !e ? "wird ermittelt …" :
+  (e.startsWith("av1") ? "AV1" : e.startsWith("hevc") ? "HEVC" : "H.264") + " · " +
+  (e.includes("nvenc") ? "NVIDIA" : e.includes("amf") ? "AMD" : e.includes("qsv") ? "Intel" : "CPU");
+const lenLabel = s => s < 60 ? s + " s" : (s % 60 ? (s / 60).toString().replace(".", ",") : s / 60) + " Min";
+function missingCodec() {
+  if (!codecs) return undefined;
+  const enc = S.codec === "hevc" ? "hevc" : S.codec === "h264" ? "h264" : encoder;
+  if (!enc) return undefined;
+  if (S.postCompress || enc.startsWith("av1")) return codecs.av1 ? null : "AV1";
+  if (enc.startsWith("hevc")) return codecs.hevc ? null : "HEVC";
+  return null;
+}
+function codecNoteHtml() {
+  const m = missingCodec();
+  if (m === undefined) return "";
+  if (m === null) return '<div class="note ok">✓ Deine Clips laufen auch in der Windows-Medienwiedergabe.</div>';
+  const price = m === "AV1" ? "kostenlos" : "0,99 €";
+  return `<div class="note warn"><div>⚠ Der Windows-Medienwiedergabe fehlt die ${m}-Erweiterung. Browser, Discord und VLC spielen die Clips trotzdem ab. <a data-store="${m}">${m}-Erweiterung holen (${price}) →</a></div></div>`;
+}
+function renderDerived() {
+  $("#f-key").textContent = S.clipHotkey || "–";
+  $("#f-len").textContent = lenLabel(S.clipSeconds);
+  $("#f-enc").textContent = `${S.height}p${S.fps} · ${encLabel(encoder)}`;
+  $("#folder").textContent = S.outputFolder;
+  const html = codecNoteHtml();
+  $("#codecNote").innerHTML = html; $("#homeNote").innerHTML = html ? `<div style="margin-top:16px">${html}</div>` : "";
+  $("#codecRow").style.display = html ? "" : "none";
+  $$("[data-store]").forEach(a => a.onclick = () => post({ type: "openStore", codec: a.dataset.store }));
+  renderCorners();
+}
+function renderStatus(st) {
+  const cls = st.color === "green" ? "on" : st.color === "red" ? "off" : "";
+  $("#sdot").className = "dot " + cls; $("#stext").textContent = st.text;
+  $("#ring").className = "ring " + cls;
+  $("#htitle").textContent = st.enabled ? (cls === "on" ? "Clipsy nimmt auf" : "Clipsy startet …") : "Clipsy ist pausiert";
+  $("#hsub").textContent = st.enabled
+    ? `${S.clipHotkey || "Clip-Taste"} speichert die letzten ${lenLabel(S.clipSeconds)} · ${st.mode}`
+    : "Clippen ist aus. Nach einem PC-Neustart ist es automatisch wieder an.";
+  $("#toggle").textContent = st.enabled ? "Pausieren" : "Aktivieren";
+  $("#toggle").className = "btn " + (st.enabled ? "danger" : "primary");
+}
+
+// ---------- Nachrichten aus Clipsy ----------
+window.chrome?.webview?.addEventListener("message", e => {
+  const m = e.data;
+  switch (m.type) {
+    case "init":
+      S = m.settings; D = m.devices; codecs = m.codecs; encoder = m.encoder; logo = m.logo;
+      $("#logo").src = $("#logo2").src = logo; $("#version").textContent = "Version " + m.version;
+      initSegs(); initSwitches(); renderSelects(); renderKeys(); renderDerived(); renderStatus(m.status);
+      break;
+    case "status": encoder = m.encoder; renderStatus(m.status); renderDerived(); break;
+    case "codecs": codecs = m.codecs; renderDerived(); break;
+    case "folder": S.outputFolder = m.path; renderDerived(); save(); break;
+    case "saved": flash("✓ Gespeichert"); break;
+    case "error": flash(m.message, true); if (m.settings) { S = m.settings; initSegs(); initSwitches(); renderSelects(); renderKeys(); renderDerived(); } break;
+  }
+});
+post({ type: "ready" });
+</script>
+</body>
+</html>

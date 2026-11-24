@@ -18,7 +18,7 @@ internal sealed class TrayApp : ApplicationContext
     readonly Dictionary<Color, Icon> icons = new();
     readonly ToolStripMenuItem clipItem = new("Clip speichern");
     readonly ToolStripMenuItem toggleItem = new("Pausieren");
-    SettingsForm? settingsForm;
+    Form? settingsForm;
     bool saving;
     bool codecHintShown;
     string? balloonStoreCodec;
@@ -28,7 +28,11 @@ internal sealed class TrayApp : ApplicationContext
         settings = AppSettings.Load();
         Autostart.Apply(settings.Autostart);
 
-        var menu = new ContextMenuStrip();
+        var menu = new ContextMenuStrip
+        {
+            Renderer = new DarkMenuRenderer(), BackColor = Color.FromArgb(24, 16, 38), ForeColor = Color.FromArgb(242, 238, 250),
+            Font = new Font("Segoe UI", 9.5f), ShowImageMargin = false, Padding = new Padding(4),
+        };
         clipItem.Click += (_, _) => SaveClip();
         toggleItem.Click += (_, _) => Toggle();
         menu.Items.Add(clipItem);
@@ -224,8 +228,7 @@ internal sealed class TrayApp : ApplicationContext
         }
 
         hotkeys.UnregisterAll(); // sonst landet z. B. F10 nicht im Tasten-Feld
-        settingsForm = new SettingsForm(settings, () => recorder?.Encoder, Status, Toggle, OpenFolder);
-        settingsForm.Saved += s =>
+        Action<AppSettings> onSaved = s =>
         {
             settings = s;
             try { settings.Save(); } catch (Exception ex) { Log.Write($"Speichern fehlgeschlagen: {ex.Message}"); }
@@ -235,6 +238,19 @@ internal sealed class TrayApp : ApplicationContext
             if (settings.ShowOverlay) overlay.Show(); else overlay.Hide();
             codecHintShown = false;
         };
+        if (WebSettingsForm.IsAvailable())
+        {
+            var web = new WebSettingsForm(settings, () => recorder?.Encoder, Status, () => recorder?.Mode ?? "–", Toggle, OpenFolder);
+            web.Saved += onSaved;
+            settingsForm = web;
+        }
+        else
+        {
+            // Ohne WebView2-Laufzeit (sehr selten): schlichtes Fenster
+            var classic = new SettingsForm(settings, () => recorder?.Encoder, Status, Toggle, OpenFolder);
+            classic.Saved += onSaved;
+            settingsForm = classic;
+        }
         settingsForm.FormClosed += (_, _) =>
         {
             settingsForm = null;

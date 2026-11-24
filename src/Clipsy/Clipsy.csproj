@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Clipsy</AssemblyName>
     <RootNamespace>Clipsy</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.7.0</Version>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <SatelliteResourceLanguages>de;en</SatelliteResourceLanguages>
     <ApplicationIcon>Assets\clipsy.ico</ApplicationIcon>
@@ -19,10 +19,12 @@
   <ItemGroup>
     <EmbeddedResource Include="Assets\clipsy.png" LogicalName="clipsy.png" />
     <EmbeddedResource Include="Assets\clipsy.ico" LogicalName="clipsy.ico" />
+    <EmbeddedResource Include="Ui\settings.html" LogicalName="settings.html" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
   </ItemGroup>
 
   <ItemGroup>
