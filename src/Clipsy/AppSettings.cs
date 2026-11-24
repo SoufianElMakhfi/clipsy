@@ -19,6 +19,7 @@ public sealed class AppSettings
     public bool ShowOverlay { get; set; } = true;
     public OverlayCorner OverlayCorner { get; set; } = OverlayCorner.TopLeft;
     public bool ClipSound { get; set; } = true;
+    public bool PostCompress { get; set; } = false;  // Clips nachträglich zu AV1 (≈60 % kleiner, kostet CPU-Zeit)
     public bool Autostart { get; set; } = true;
 
     public static readonly int[] ClipLengths = [15, 30, 45, 60, 90, 120, 180, 300];

@@ -12,6 +12,7 @@ internal sealed class TrayApp : ApplicationContext
 
     AppSettings settings;
     readonly Recorder? recorder;
+    readonly PostCompressor? compressor;
     readonly HotkeyManager hotkeys = new();
     readonly StatusOverlay overlay = new();
     readonly NotifyIcon tray;
@@ -54,6 +55,8 @@ internal sealed class TrayApp : ApplicationContext
             recorder = new Recorder(ff, settings);
             recorder.SetTarget(TargetTracker.PrimaryMonitor());
             recorder.SetEnabled(true); // nach jedem Start (z. B. PC-Neustart) immer wieder AN
+            compressor = new PostCompressor(ff);
+            PostCompressor.CleanLeftovers(settings.OutputFolder);
         }
 
         RegisterHotkeys();
@@ -65,14 +68,16 @@ internal sealed class TrayApp : ApplicationContext
     void OnTick()
     {
         if (recorder is null) return;
+        var game = TargetTracker.FindFullscreenForeground();
         if (recorder.Enabled)
         {
-            if (TargetTracker.FindFullscreenForeground() is { } game)
+            if (game is not null)
                 recorder.SetTarget(game);
             else if (recorder.Target is { IsWindow: true } t && !Native.IsWindow(t.Hwnd))
                 recorder.SetTarget(TargetTracker.PrimaryMonitor()); // Spiel beendet
         }
         recorder.Tick();
+        compressor?.Tick(gameRunning: game is not null);
         UpdateVisuals();
     }
 
@@ -105,6 +110,7 @@ internal sealed class TrayApp : ApplicationContext
             if (path is not null)
             {
                 if (settings.ClipSound) SystemSounds.Asterisk.Play();
+                if (settings.PostCompress) compressor?.Enqueue(path);
                 overlay.Flash(Color.DeepSkyBlue);
             }
             else
@@ -205,6 +211,7 @@ internal sealed class TrayApp : ApplicationContext
     {
         timer.Stop();
         hotkeys.Dispose();
+        compressor?.Dispose();
         recorder?.Dispose();
         tray.Visible = false;
         tray.Dispose();

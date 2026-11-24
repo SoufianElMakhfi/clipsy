@@ -128,6 +128,16 @@ public class FfmpegArgsTests
     }
 
     [Fact]
+    public void PostCompress_uses_svtav1_and_copies_audio()
+    {
+        var a = FfmpegArgs.PostCompress(@"C:\c\clip.mp4", @"C:\c\~clipsy-clip.mp4");
+        Assert.Equal("libsvtav1", a[a.IndexOf("-c:v") + 1]);
+        Assert.Equal("30", a[a.IndexOf("-crf") + 1]);
+        Assert.Equal("copy", a[a.IndexOf("-c:a") + 1]);
+        Assert.Equal(@"C:\c\~clipsy-clip.mp4", a[^1]);
+    }
+
+    [Fact]
     public void Hevc_clips_get_hvc1_tag()
     {
         Assert.Contains("hvc1", FfmpegArgs.Concat(["a.ts"], "o.mp4", hevc: true));
@@ -200,6 +210,7 @@ public class SettingsTests
         Assert.Equal(60, s.Fps);
         Assert.Equal("F10", s.ClipHotkey);
         Assert.Equal("hevc", s.Codec);
+        Assert.False(s.PostCompress); // nur auf Wunsch
         Assert.True(s.Autostart);
         Assert.Equal(AudioDevices.Auto, s.AudioOutput);
         Assert.Equal(AudioDevices.Off, s.Microphone); // Mikro nur auf Wunsch

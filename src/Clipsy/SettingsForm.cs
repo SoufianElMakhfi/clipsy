@@ -21,6 +21,11 @@ internal sealed class SettingsForm : Form
     readonly CheckBox overlay = new() { Text = "Status-Punkt anzeigen (grün = an, rot = aus)", AutoSize = true };
     readonly ComboBox corner = Combo("Oben links", "Oben rechts", "Unten links", "Unten rechts");
     readonly CheckBox sound = new() { Text = "Ton beim Speichern eines Clips", AutoSize = true };
+    readonly CheckBox postCompress = new()
+    {
+        Text = "Clips nachkomprimieren (AV1, ca. 60 % kleiner – rechnet nur, wenn kein Spiel läuft)",
+        AutoSize = true,
+    };
     readonly CheckBox autostart = new() { Text = "Mit Windows starten (empfohlen)", AutoSize = true };
     readonly System.Windows.Forms.Timer refresh = new() { Interval = 500 };
 
@@ -66,7 +71,7 @@ internal sealed class SettingsForm : Form
         AddRow(root, "An/Aus-Taste:", toggleKey);
         AddRow(root, "Speicherort:", Row(folder, browse));
         AddRow(root, "Punkt-Position:", corner);
-        foreach (var cb in new[] { overlay, sound, autostart }) AddRow(root, "", cb);
+        foreach (var cb in new[] { postCompress, overlay, sound, autostart }) AddRow(root, "", cb);
 
         var hint = new Label
         {
@@ -115,6 +120,7 @@ internal sealed class SettingsForm : Form
         corner.SelectedIndex = (int)s.OverlayCorner;
         overlay.Checked = s.ShowOverlay;
         sound.Checked = s.ClipSound;
+        postCompress.Checked = s.PostCompress;
         autostart.Checked = s.Autostart;
     }
 
@@ -166,6 +172,7 @@ internal sealed class SettingsForm : Form
         s.Microphone = (micDevice.SelectedItem as DeviceItem)?.Value ?? AudioDevices.Off;
         s.ShowOverlay = overlay.Checked;
         s.ClipSound = sound.Checked;
+        s.PostCompress = postCompress.Checked;
         s.Autostart = autostart.Checked;
         Saved?.Invoke(s.Normalize());
         Close();
