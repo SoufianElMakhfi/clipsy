@@ -12,6 +12,7 @@ internal sealed class TrayApp : ApplicationContext
     readonly HotkeyManager hotkeys = new();
     readonly StatusOverlay overlay = new();
     readonly ClipToast toast = new();
+    readonly EventWaitHandle showSettings = new(false, EventResetMode.AutoReset, Program.ShowSettingsEvent);
     readonly NotifyIcon tray;
     readonly System.Windows.Forms.Timer timer = new() { Interval = 1000 };
     readonly Dictionary<Color, Icon> icons = new();
@@ -60,6 +61,11 @@ internal sealed class TrayApp : ApplicationContext
             PostCompressor.CleanLeftovers(settings.OutputFolder);
             _ = CodecSupport.CheckAsync(); // Video-Erweiterungen schon mal im Hintergrund prüfen
         }
+
+        // Zweiter Start der EXE → Zahnrad öffnen
+        var ui = SynchronizationContext.Current;
+        ThreadPool.RegisterWaitForSingleObject(showSettings, (_, _) => ui?.Post(_ => OpenSettings(), null),
+                                               null, Timeout.Infinite, executeOnlyOnce: false);
 
         RegisterHotkeys();
         timer.Tick += (_, _) => OnTick();
