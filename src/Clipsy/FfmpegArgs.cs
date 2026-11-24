@@ -63,10 +63,11 @@ public static class FfmpegArgs
         var a = new List<string>
         {
             "-hide_banner", "-loglevel", "warning", "-nostats", "-y",
-            "-thread_queue_size", "512", "-f", "lavfi", "-i", VideoGraph(src, height, fps),
+            // Kein -thread_queue_size: neuere ffmpeg-Versionen lehnen das an Eingängen ab (Fehler -22).
+            "-f", "lavfi", "-i", VideoGraph(src, height, fps),
         };
         if (audio != null)
-            a.AddRange(["-thread_queue_size", "2048", "-f", audio.SampleFormat, "-ar", S(audio.SampleRate),
+            a.AddRange(["-f", audio.SampleFormat, "-ar", S(audio.SampleRate),
                         "-ac", S(audio.Channels), "-i", audio.PipePath]);
 
         a.AddRange(["-map", "0:v"]);

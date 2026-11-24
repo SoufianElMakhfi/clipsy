@@ -57,6 +57,7 @@ public class FfmpegArgsTests
         var a = FfmpegArgs.Record(new CaptureSource(CaptureMode.Window, 1, 0), audio, "h264_nvenc", 1080, 60, 30, "seg%03d.ts");
         Assert.Contains(@"\\.\pipe\x", a);
         Assert.Contains("h264_nvenc", a);
+        Assert.DoesNotContain("-thread_queue_size", a); // bricht mit aktuellem ffmpeg ab
         Assert.Equal("19", a[a.IndexOf("-segment_wrap") + 1]); // 15 Segmente + 4 Reserve
         Assert.Equal("seg%03d.ts", a[^1]);
     }
