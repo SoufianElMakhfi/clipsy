@@ -54,7 +54,9 @@ public class FfmpegArgsTests
     public void Record_includes_audio_pipe_and_ringbuffer()
     {
         var audio = new AudioInput(@"\\.\pipe\x", "f32le", 48000, 2);
-        var a = FfmpegArgs.Record(new CaptureSource(CaptureMode.Window, 1, 0), audio, "h264_nvenc", 1080, 60, 30, "seg%03d.ts");
+        var a = FfmpegArgs.Record(new CaptureSource(CaptureMode.Window, 1, 0), [audio], "h264_nvenc", 1080, 60, 30, "seg%03d.ts");
+        Assert.Contains("1:a", a);
+        Assert.DoesNotContain("-filter_complex", a);
         Assert.Contains(@"\\.\pipe\x", a);
         Assert.Contains("h264_nvenc", a);
         Assert.DoesNotContain("-thread_queue_size", a); // bricht mit aktuellem ffmpeg ab
@@ -65,9 +67,23 @@ public class FfmpegArgsTests
     [Fact]
     public void Record_without_audio_has_no_audio_map()
     {
-        var a = FfmpegArgs.Record(new CaptureSource(CaptureMode.Monitor, 1, 0), null, "libx264", 720, 30, 15, "o.ts");
+        var a = FfmpegArgs.Record(new CaptureSource(CaptureMode.Monitor, 1, 0), [], "libx264", 720, 30, 15, "o.ts");
         Assert.DoesNotContain("1:a", a);
         Assert.DoesNotContain("aac", a);
+    }
+
+    [Fact]
+    public void Game_sound_and_mic_are_mixed_into_one_track()
+    {
+        var game = new AudioInput(@"\\.\pipe\g", "f32le", 48000, 2);
+        var mic = new AudioInput(@"\\.\pipe\m", "f32le", 44100, 1);
+        var a = FfmpegArgs.Record(new CaptureSource(CaptureMode.Window, 1, 0), [game, mic], "h264_amf", 1080, 60, 30, "o.ts");
+        var graph = a[a.IndexOf("-filter_complex") + 1];
+        Assert.Contains("[1:a]", graph);
+        Assert.Contains("[2:a]", graph);
+        Assert.Contains("amix=inputs=2", graph);
+        Assert.Equal("[aout]", a[a.LastIndexOf("-map") + 1]);
+        Assert.Contains("44100", a);
     }
 
     [Fact]
@@ -102,6 +118,28 @@ public class SegmentSelectorTests
     }
 }
 
+public class AudioDeviceTests
+{
+    static readonly AudioDeviceInfo speakers = new("spk", "Lautsprecher (Realtek)", false);
+    static readonly AudioDeviceInfo headset = new("usb1", "USB Headset", true);
+    static readonly AudioDeviceInfo usbMic = new("usb2", "USB Mikrofon", true);
+
+    [Fact]
+    public void Usb_has_priority_over_windows_default() =>
+        Assert.Equal("usb1", AudioDevices.PickAuto([speakers, headset], "spk"));
+
+    [Fact]
+    public void Default_usb_wins_among_several_usb() =>
+        Assert.Equal("usb2", AudioDevices.PickAuto([headset, usbMic, speakers], "usb2"));
+
+    [Fact]
+    public void Without_usb_windows_default_is_used() =>
+        Assert.Equal("spk", AudioDevices.PickAuto([speakers], "spk"));
+
+    [Fact]
+    public void No_devices_gives_null() => Assert.Null(AudioDevices.PickAuto([], null));
+}
+
 public class ByteFifoTests
 {
     [Fact]
@@ -127,7 +165,16 @@ public class SettingsTests
         Assert.Equal(60, s.Fps);
         Assert.Equal("F10", s.ClipHotkey);
         Assert.True(s.Autostart);
+        Assert.Equal(AudioDevices.Auto, s.AudioOutput);
+        Assert.Equal(AudioDevices.Off, s.Microphone); // Mikro nur auf Wunsch
     }
+
+    [Theory]
+    [InlineData(30, "30 Sekunden")]
+    [InlineData(60, "1 Min")]
+    [InlineData(90, "1,5 Min")]
+    [InlineData(300, "5 Min")]
+    public void Length_labels(int s, string expected) => Assert.Equal(expected, AppSettings.LengthLabel(s));
 
     [Fact]
     public void Normalize_fixes_invalid_values()
@@ -135,7 +182,7 @@ public class SettingsTests
         var s = new AppSettings { Height = 2160, Fps = 144, ClipSeconds = 9999, OutputFolder = "relativ", ClipHotkey = "x+y" }.Normalize();
         Assert.Equal(1080, s.Height);   // kein 4K
         Assert.Equal(60, s.Fps);
-        Assert.Equal(120, s.ClipSeconds);
+        Assert.Equal(300, s.ClipSeconds);
         Assert.True(Path.IsPathFullyQualified(s.OutputFolder));
         Assert.Equal("F10", s.ClipHotkey);
     }

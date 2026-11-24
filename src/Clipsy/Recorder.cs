@@ -23,6 +23,7 @@ internal sealed class Recorder : IDisposable
     DateTime ddaSinceUtc;
     int quickFailures;
     DateTime nextStartUtc = DateTime.MinValue;
+    DateTime lastDeviceCheckUtc = DateTime.MinValue;
 
     public Recorder(string ffmpegPath, AppSettings settings)
     {
@@ -73,8 +74,8 @@ internal sealed class Recorder : IDisposable
 
     public void ApplySettings(AppSettings s)
     {
-        bool restart = s.Height != settings.Height || s.Fps != settings.Fps ||
-                       s.ClipSeconds != settings.ClipSeconds || s.RecordAudio != settings.RecordAudio;
+        bool restart = s.Height != settings.Height || s.Fps != settings.Fps || s.ClipSeconds != settings.ClipSeconds ||
+                       s.AudioOutput != settings.AudioOutput || s.Microphone != settings.Microphone;
         settings = s;
         if (restart) { StopSession(); nextStartUtc = DateTime.MinValue; }
     }
@@ -94,6 +95,20 @@ internal sealed class Recorder : IDisposable
                     State = RecorderState.Recording;
                     if (s.Source.Mode == CaptureMode.Window) windowCaptureWorked = true;
                     if (now - s.StartedUtc > TimeSpan.FromSeconds(20)) quickFailures = 0;
+
+                    // USB-Headset ein-/ausgesteckt o. Ä. → auf das neue Gerät umschalten
+                    if (now - lastDeviceCheckUtc > TimeSpan.FromSeconds(5))
+                    {
+                        lastDeviceCheckUtc = now;
+                        var (outId, micId) = ResolveDevices();
+                        if (outId != s.OutputDeviceId || micId != s.MicDeviceId)
+                        {
+                            Log.Write("Audiogerät gewechselt – Aufnahme wird neu gestartet");
+                            StopSession();
+                            nextStartUtc = DateTime.MinValue;
+                            return;
+                        }
+                    }
 
                     // Nach Fallback regelmäßig wieder sauberes Fenster-Capture versuchen
                     if (useDesktopDuplication && windowCaptureWorked && target is { IsWindow: true } t &&
@@ -142,18 +157,21 @@ internal sealed class Recorder : IDisposable
     void StartSession(CaptureTarget t)
     {
         var dir = Path.Combine(bufferRoot, DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff"));
-        AudioPump? audio = null;
+        var pumps = new List<AudioPump>();
         Process? p = null;
         try
         {
             Directory.CreateDirectory(dir);
-            if (settings.RecordAudio) audio = new AudioPump();
+            var (outId, micId) = ResolveDevices();
+            lastDeviceCheckUtc = DateTime.UtcNow;
+            if (settings.AudioOutput != AudioDevices.Off) pumps.Add(new AudioPump(outId, loopback: true));
+            if (micId != null) pumps.Add(new AudioPump(micId, loopback: false));
 
             var src = useDesktopDuplication ? new CaptureSource(CaptureMode.DesktopDuplication, 0, t.OutputIndex)
                     : t.IsWindow ? new CaptureSource(CaptureMode.Window, t.Hwnd.ToInt64(), t.OutputIndex)
                     : new CaptureSource(CaptureMode.Monitor, t.Monitor.ToInt64(), t.OutputIndex);
 
-            var args = FfmpegArgs.Record(src, audio?.Input, encoder!, settings.Height, settings.Fps,
+            var args = FfmpegArgs.Record(src, pumps.Select(x => x.Input).ToList(), encoder!, settings.Height, settings.Fps,
                                          settings.ClipSeconds, Path.Combine(dir, "seg%03d.ts"));
             var psi = new ProcessStartInfo(ffmpeg)
             {
@@ -176,16 +194,16 @@ internal sealed class Recorder : IDisposable
             Native.KillWithApp(p);
             p.BeginErrorReadLine();
             try { p.PriorityClass = ProcessPriorityClass.AboveNormal; } catch { }
-            audio?.Start();
+            foreach (var pump in pumps) pump.Start();
 
-            session = new Session(p, dir, audio, errors, DateTime.UtcNow, src);
+            session = new Session(p, dir, pumps, errors, DateTime.UtcNow, src) { OutputDeviceId = outId, MicDeviceId = micId };
             State = RecorderState.Starting;
-            Log.Write($"Aufnahme gestartet: {src.Mode}, {settings.Height}p{settings.Fps}, {encoder}, Audio={settings.RecordAudio}");
+            Log.Write($"Aufnahme gestartet: {src.Mode}, {settings.Height}p{settings.Fps}, {encoder}, Tonquellen={pumps.Count}");
         }
         catch (Exception ex)
         {
             Log.Write($"Start fehlgeschlagen: {ex.Message}");
-            audio?.Dispose();
+            foreach (var pump in pumps) pump.Dispose();
             try { p?.Kill(true); } catch { }
             p?.Dispose();
             quickFailures++;
@@ -193,6 +211,10 @@ internal sealed class Recorder : IDisposable
             State = RecorderState.Error;
         }
     }
+
+    (string? outId, string? micId) ResolveDevices() =>
+        (settings.AudioOutput == AudioDevices.Off ? null : AudioDevices.Resolve(settings.AudioOutput, NAudio.CoreAudioApi.DataFlow.Render),
+         AudioDevices.Resolve(settings.Microphone, NAudio.CoreAudioApi.DataFlow.Capture));
 
     void StopSession()
     {
@@ -270,10 +292,12 @@ internal sealed class Recorder : IDisposable
         CleanBuffer();
     }
 
-    sealed class Session(Process process, string dir, AudioPump? audio,
+    sealed class Session(Process process, string dir, List<AudioPump> audio,
                          ConcurrentQueue<string> errors, DateTime startedUtc, CaptureSource source) : IDisposable
     {
         bool hasSegments;
+        public string? OutputDeviceId { get; init; }
+        public string? MicDeviceId { get; init; }
         public Process Process { get; } = process;
         public string Dir { get; } = dir;
         public DateTime StartedUtc { get; } = startedUtc;
@@ -299,7 +323,7 @@ internal sealed class Recorder : IDisposable
                 }
             }
             catch { }
-            audio?.Dispose();
+            foreach (var pump in audio) pump.Dispose();
             try { Process.Dispose(); } catch { }
             try { Directory.Delete(Dir, true); } catch { }
         }

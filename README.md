@@ -11,8 +11,10 @@ auf Tastendruck die letzten Sekunden als MP4.
 - **Status-Punkt:** grün = Clippen an, rot = aus, orange = startet. Ist selbst nie in Aufnahmen sichtbar
 - **Immer an:** startet mit Windows und ist nach jedem Neustart automatisch wieder aktiv –
   auch wenn man es vorher deaktiviert hat
-- **⚙ Einstellungen** (Tray-Icon → Doppelklick): Qualität 720p / 1080p, 30 / 60 FPS, Clip-Länge,
-  Tasten ändern, Speicherort, Spiel-Sound, Status-Punkt, Autostart
+- **⚙ Einstellungen** (Tray-Icon → Doppelklick): Qualität 720p / 1080p, 30 / 60 FPS,
+  Clip-Länge (15 s bis 5 Min), Tasten ändern, Speicherort, Status-Punkt, Autostart
+- **Audiogeräte:** Spiel-Sound und Mikrofon wählbar – „Automatisch“ bevorzugt USB-Geräte (Headset, USB-Mikro),
+  sonst Windows-Standard; Ein-/Ausstecken wird erkannt. Mikrofon ist standardmäßig aus.
 - **Clip-Ordner öffnen** direkt aus Tray-Menü oder Einstellungen
 - Hardware-Encoding automatisch (NVIDIA NVENC → AMD AMF → Intel QSV → CPU)
 

@@ -11,11 +11,12 @@ internal sealed class SettingsForm : Form
     readonly Button toggleButton = new() { AutoSize = true };
     readonly ComboBox quality = Combo("720p", "1080p (Standard)");
     readonly ComboBox fps = Combo("30 FPS", "60 FPS");
-    readonly ComboBox length = Combo(AppSettings.ClipLengths.Select(s => $"{s} Sekunden").ToArray());
+    readonly ComboBox length = Combo(AppSettings.ClipLengths.Select(AppSettings.LengthLabel).ToArray());
+    readonly ComboBox outputDevice = Combo();
+    readonly ComboBox micDevice = Combo();
     readonly HotkeyBox clipKey = new() { Width = 200 };
     readonly HotkeyBox toggleKey = new() { Width = 200, AllowNone = true };
     readonly TextBox folder = new() { Width = 260 };
-    readonly CheckBox audio = new() { Text = "Spiel-Sound aufnehmen", AutoSize = true };
     readonly CheckBox overlay = new() { Text = "Status-Punkt anzeigen (grün = an, rot = aus)", AutoSize = true };
     readonly ComboBox corner = Combo("Oben links", "Oben rechts", "Unten links", "Unten rechts");
     readonly CheckBox sound = new() { Text = "Ton beim Speichern eines Clips", AutoSize = true };
@@ -57,11 +58,13 @@ internal sealed class SettingsForm : Form
         AddRow(root, "Qualität:", quality);
         AddRow(root, "Bildrate:", fps);
         AddRow(root, "Clip-Länge:", length);
+        AddRow(root, "Spiel-Sound:", outputDevice);
+        AddRow(root, "Mikrofon:", micDevice);
         AddRow(root, "Clip-Taste:", clipKey);
         AddRow(root, "An/Aus-Taste:", toggleKey);
         AddRow(root, "Speicherort:", Row(folder, browse));
         AddRow(root, "Punkt-Position:", corner);
-        foreach (var cb in new[] { audio, overlay, sound, autostart }) AddRow(root, "", cb);
+        foreach (var cb in new[] { overlay, sound, autostart }) AddRow(root, "", cb);
 
         var hint = new Label
         {
@@ -69,6 +72,8 @@ internal sealed class SettingsForm : Form
             ForeColor = SystemColors.GrayText,
             MaximumSize = new Size(460, 0),
             Text = "Taste ändern: ins Feld klicken und neue Kombination drücken (Entf = keine).\n" +
+                   "Automatisch = USB-Gerät (Headset, Mikro) hat Vorrang, sonst Windows-Standard. Wechsel wird erkannt.\n" +
+                   "Lange Clips brauchen Platz im Puffer (5 Min in 1080p60 ≈ 750 MB).\n" +
                    $"Encoder: {encoderInfo}. Nach jedem PC-Neustart ist das Clippen automatisch wieder an.",
         };
         root.Controls.Add(hint, 0, root.RowCount++);
@@ -98,11 +103,12 @@ internal sealed class SettingsForm : Form
         fps.SelectedIndex = s.Fps >= 60 ? 1 : 0;
         int li = Array.IndexOf(AppSettings.ClipLengths, s.ClipSeconds);
         length.SelectedIndex = li >= 0 ? li : 1;
+        FillDevices(outputDevice, NAudio.CoreAudioApi.DataFlow.Render, s.AudioOutput);
+        FillDevices(micDevice, NAudio.CoreAudioApi.DataFlow.Capture, s.Microphone);
         clipKey.Value = s.ClipHotkey;
         toggleKey.Value = s.ToggleHotkey;
         folder.Text = s.OutputFolder;
         corner.SelectedIndex = (int)s.OverlayCorner;
-        audio.Checked = s.RecordAudio;
         overlay.Checked = s.ShowOverlay;
         sound.Checked = s.ClipSound;
         autostart.Checked = s.Autostart;
@@ -151,12 +157,41 @@ internal sealed class SettingsForm : Form
         s.ToggleHotkey = toggleKey.Value;
         s.OutputFolder = path;
         s.OverlayCorner = (OverlayCorner)Math.Max(0, corner.SelectedIndex);
-        s.RecordAudio = audio.Checked;
+        s.AudioOutput = (outputDevice.SelectedItem as DeviceItem)?.Value ?? AudioDevices.Auto;
+        s.Microphone = (micDevice.SelectedItem as DeviceItem)?.Value ?? AudioDevices.Off;
         s.ShowOverlay = overlay.Checked;
         s.ClipSound = sound.Checked;
         s.Autostart = autostart.Checked;
         Saved?.Invoke(s.Normalize());
         Close();
+    }
+
+    sealed record DeviceItem(string Value, string Text)
+    {
+        public override string ToString() => Text;
+    }
+
+    static void FillDevices(ComboBox combo, NAudio.CoreAudioApi.DataFlow flow, string current)
+    {
+        var devices = AudioDevices.List(flow);
+        var autoId = AudioDevices.PickAuto(devices, AudioDevices.DefaultId(flow));
+        var autoName = devices.FirstOrDefault(d => d.Id == autoId)?.Name;
+
+        var items = new List<DeviceItem>
+        {
+            new(AudioDevices.Off, "Aus"),
+            new(AudioDevices.Auto, "Automatisch (USB bevorzugt)" + (autoName is null ? "" : $" → {autoName}")),
+            new(AudioDevices.Default, "Windows-Standard"),
+        };
+        items.AddRange(devices.Select(d => new DeviceItem(d.Id, d.Name + (d.IsUsb ? "  [USB]" : ""))));
+        if (!items.Any(i => i.Value == current))
+            items.Add(new DeviceItem(current, "Gespeichertes Gerät (nicht angeschlossen)"));
+
+        combo.Width = 380;
+        combo.DropDownWidth = 480;
+        combo.Items.Clear();
+        combo.Items.AddRange(items.ToArray<object>());
+        combo.SelectedIndex = items.FindIndex(i => i.Value == current);
     }
 
     static ComboBox Combo(params string[] items)

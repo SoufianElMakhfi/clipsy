@@ -1,18 +1,20 @@
 using System.Diagnostics;
 using System.IO.Pipes;
+using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
 namespace Clipsy;
 
 /// <summary>
-/// Spiel-/System-Sound (WASAPI-Loopback) → Named Pipe → ffmpeg.
+/// Audiogerät → Named Pipe → ffmpeg. Spiel-Sound per WASAPI-Loopback, Mikrofon per WASAPI-Capture.
 /// Taktet in Echtzeit und füllt Stille auf (Loopback liefert bei Stille keine Daten),
 /// damit Ton und Bild synchron bleiben.
 /// </summary>
 internal sealed class AudioPump : IDisposable
 {
     readonly NamedPipeServerStream pipe;
-    readonly WasapiLoopbackCapture? capture;
+    readonly WasapiCapture? capture;
+    readonly MMDevice? device;
     readonly ByteFifo fifo;
     readonly int rate, blockAlign;
     readonly CancellationTokenSource cts = new();
@@ -21,7 +23,9 @@ internal sealed class AudioPump : IDisposable
 
     public AudioInput Input { get; }
 
-    public AudioPump()
+    /// <param name="deviceId">Geräte-ID; null = nur Stille</param>
+    /// <param name="loopback">true = Spiel-Sound (Ausgabegerät), false = Mikrofon</param>
+    public AudioPump(string? deviceId, bool loopback)
     {
         var name = "clipsy_audio_" + Guid.NewGuid().ToString("N");
         pipe = new NamedPipeServerStream(name, PipeDirection.Out, 1, PipeTransmissionMode.Byte,
@@ -32,7 +36,10 @@ internal sealed class AudioPump : IDisposable
         blockAlign = 8;
         try
         {
-            capture = new WasapiLoopbackCapture();
+            if (deviceId is null) throw new InvalidOperationException("kein Gerät gefunden");
+            using (var en = new MMDeviceEnumerator()) device = en.GetDevice(deviceId);
+            capture = loopback ? new WasapiLoopbackCapture(device) : new WasapiCapture(device);
+            Log.Write($"{(loopback ? "Spiel-Sound" : "Mikrofon")}: {device.FriendlyName}");
             var wf = capture.WaveFormat;
             rate = wf.SampleRate;
             channels = wf.Channels;
@@ -51,9 +58,10 @@ internal sealed class AudioPump : IDisposable
         }
         catch (Exception ex)
         {
-            Log.Write($"Audio-Loopback nicht verfügbar, nehme Stille auf: {ex.Message}");
+            Log.Write($"Audio ({(loopback ? "Spiel-Sound" : "Mikrofon")}) nicht verfügbar, nehme Stille auf: {ex.Message}");
             capture?.Dispose();
             capture = null;
+            rate = 48000; channels = 2; blockAlign = 8; fmt = "f32le";
         }
         fifo = new ByteFifo(rate * blockAlign * 2);
         Input = new AudioInput($@"\\.\pipe\{name}", fmt, rate, channels);
@@ -117,6 +125,7 @@ internal sealed class AudioPump : IDisposable
         cts.Cancel();
         try { capture?.StopRecording(); } catch { }
         try { capture?.Dispose(); } catch { }
+        try { device?.Dispose(); } catch { }
         try { pipe.Dispose(); } catch { }
         thread?.Join(1000);
     }

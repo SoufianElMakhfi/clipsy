@@ -13,13 +13,20 @@ public sealed class AppSettings
     public int Fps { get; set; } = 60;               // 30 oder 60
     public int ClipSeconds { get; set; } = 30;
     public string OutputFolder { get; set; } = DefaultFolder;
-    public bool RecordAudio { get; set; } = true;
+    public string AudioOutput { get; set; } = AudioDevices.Auto;   // Spiel-Sound: off / auto / default / Geräte-ID
+    public string Microphone { get; set; } = AudioDevices.Off;     // Mikrofon: standardmäßig aus (Datenschutz)
     public bool ShowOverlay { get; set; } = true;
     public OverlayCorner OverlayCorner { get; set; } = OverlayCorner.TopLeft;
     public bool ClipSound { get; set; } = true;
     public bool Autostart { get; set; } = true;
 
-    public static readonly int[] ClipLengths = [15, 30, 45, 60, 90, 120];
+    public static readonly int[] ClipLengths = [15, 30, 45, 60, 90, 120, 180, 300];
+    public const int MaxClipSeconds = 300;
+
+    public static string LengthLabel(int seconds) =>
+        seconds < 60 ? $"{seconds} Sekunden"
+        : seconds % 60 == 0 ? $"{seconds / 60} Min"
+        : $"{seconds / 60},{seconds % 60 * 10 / 60} Min";
 
     static string DefaultFolder =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "Clipsy");
@@ -36,7 +43,9 @@ public sealed class AppSettings
     {
         if (Height is not (720 or 1080)) Height = 1080;
         if (Fps is not (30 or 60)) Fps = 60;
-        ClipSeconds = Math.Clamp(ClipSeconds, 5, 120);
+        ClipSeconds = Math.Clamp(ClipSeconds, 5, MaxClipSeconds);
+        if (string.IsNullOrWhiteSpace(AudioOutput) || AudioOutput.Length > 300) AudioOutput = AudioDevices.Auto;
+        if (string.IsNullOrWhiteSpace(Microphone) || Microphone.Length > 300) Microphone = AudioDevices.Off;
         if (string.IsNullOrWhiteSpace(OutputFolder) || !Path.IsPathFullyQualified(OutputFolder)) OutputFolder = DefaultFolder;
         if (!Hotkey.TryParse(ClipHotkey, out _)) ClipHotkey = "F10";
         if (!string.IsNullOrEmpty(ToggleHotkey) && !Hotkey.TryParse(ToggleHotkey, out _)) ToggleHotkey = "";

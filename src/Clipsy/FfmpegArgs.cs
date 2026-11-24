@@ -57,7 +57,8 @@ public static class FfmpegArgs
         };
     }
 
-    public static List<string> Record(CaptureSource src, AudioInput? audio, string encoder,
+    /// <param name="audio">0–2 Tonquellen (Spiel-Sound, Mikrofon); mehrere werden zu einer Spur gemischt.</param>
+    public static List<string> Record(CaptureSource src, IReadOnlyList<AudioInput> audio, string encoder,
         int height, int fps, int clipSeconds, string outputPattern)
     {
         var a = new List<string>
@@ -66,16 +67,27 @@ public static class FfmpegArgs
             // Kein -thread_queue_size: neuere ffmpeg-Versionen lehnen das an Eingängen ab (Fehler -22).
             "-f", "lavfi", "-i", VideoGraph(src, height, fps),
         };
-        if (audio != null)
-            a.AddRange(["-f", audio.SampleFormat, "-ar", S(audio.SampleRate),
-                        "-ac", S(audio.Channels), "-i", audio.PipePath]);
+        foreach (var au in audio)
+            a.AddRange(["-f", au.SampleFormat, "-ar", S(au.SampleRate), "-ac", S(au.Channels), "-i", au.PipePath]);
 
         a.AddRange(["-map", "0:v"]);
-        if (audio != null) a.AddRange(["-map", "1:a"]);
+        if (audio.Count == 1)
+        {
+            a.AddRange(["-map", "1:a"]);
+        }
+        else if (audio.Count > 1)
+        {
+            var graph = "";
+            for (int i = 1; i <= audio.Count; i++)
+                graph += $"[{i}:a]aresample=48000,aformat=channel_layouts=stereo[a{i}];";
+            for (int i = 1; i <= audio.Count; i++) graph += $"[a{i}]";
+            graph += $"amix=inputs={audio.Count}:duration=longest:normalize=0[aout]";
+            a.AddRange(["-filter_complex", graph, "-map", "[aout]"]);
+        }
 
         a.AddRange(EncoderArgs(encoder, BitrateKbps(height, fps)));
         a.AddRange(["-g", S(fps), "-bf", "0"]); // 1 Keyframe/Sekunde → sauber schneidbare Segmente
-        if (audio != null) a.AddRange(["-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2"]);
+        if (audio.Count > 0) a.AddRange(["-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2"]);
 
         a.AddRange(["-max_muxing_queue_size", "4096",
             "-f", "segment", "-segment_time", S(SegmentSeconds), "-segment_wrap", S(SegmentSlots(clipSeconds)),
