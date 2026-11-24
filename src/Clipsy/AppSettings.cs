@@ -11,6 +11,7 @@ public sealed class AppSettings
     public string ToggleHotkey { get; set; } = "Ctrl+Shift+F10";
     public int Height { get; set; } = 1080;          // 720 oder 1080
     public int Fps { get; set; } = 60;               // 30 oder 60
+    public string Codec { get; set; } = "hevc";      // "hevc" (≈70 % kleiner) oder "h264" (maximal kompatibel)
     public int ClipSeconds { get; set; } = 30;
     public string OutputFolder { get; set; } = DefaultFolder;
     public string AudioOutput { get; set; } = AudioDevices.Auto;   // Spiel-Sound: off / auto / default / Geräte-ID
@@ -43,6 +44,7 @@ public sealed class AppSettings
     {
         if (Height is not (720 or 1080)) Height = 1080;
         if (Fps is not (30 or 60)) Fps = 60;
+        if (Codec is not ("hevc" or "h264")) Codec = "hevc";
         ClipSeconds = Math.Clamp(ClipSeconds, 5, MaxClipSeconds);
         if (string.IsNullOrWhiteSpace(AudioOutput) || AudioOutput.Length > 300) AudioOutput = AudioDevices.Auto;
         if (string.IsNullOrWhiteSpace(Microphone) || Microphone.Length > 300) Microphone = AudioDevices.Off;

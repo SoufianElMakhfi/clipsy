@@ -11,6 +11,7 @@ internal sealed class SettingsForm : Form
     readonly Button toggleButton = new() { AutoSize = true };
     readonly ComboBox quality = Combo("720p", "1080p (Standard)");
     readonly ComboBox fps = Combo("30 FPS", "60 FPS");
+    readonly ComboBox codec = Combo("H.265 / HEVC – ca. 70 % kleiner (empfohlen)", "H.264 – läuft überall, ca. 40 % kleiner");
     readonly ComboBox length = Combo(AppSettings.ClipLengths.Select(AppSettings.LengthLabel).ToArray());
     readonly ComboBox outputDevice = Combo();
     readonly ComboBox micDevice = Combo();
@@ -57,6 +58,7 @@ internal sealed class SettingsForm : Form
 
         AddRow(root, "Qualität:", quality);
         AddRow(root, "Bildrate:", fps);
+        AddRow(root, "Format:", codec);
         AddRow(root, "Clip-Länge:", length);
         AddRow(root, "Spiel-Sound:", outputDevice);
         AddRow(root, "Mikrofon:", micDevice);
@@ -101,6 +103,8 @@ internal sealed class SettingsForm : Form
     {
         quality.SelectedIndex = s.Height >= 1080 ? 1 : 0;
         fps.SelectedIndex = s.Fps >= 60 ? 1 : 0;
+        codec.Width = 380;
+        codec.SelectedIndex = s.Codec == "h264" ? 1 : 0;
         int li = Array.IndexOf(AppSettings.ClipLengths, s.ClipSeconds);
         length.SelectedIndex = li >= 0 ? li : 1;
         FillDevices(outputDevice, NAudio.CoreAudioApi.DataFlow.Render, s.AudioOutput);
@@ -152,6 +156,7 @@ internal sealed class SettingsForm : Form
         var s = original.Clone();
         s.Height = quality.SelectedIndex == 0 ? 720 : 1080;
         s.Fps = fps.SelectedIndex == 0 ? 30 : 60;
+        s.Codec = codec.SelectedIndex == 1 ? "h264" : "hevc";
         s.ClipSeconds = AppSettings.ClipLengths[Math.Max(0, length.SelectedIndex)];
         s.ClipHotkey = clipKey.Value;
         s.ToggleHotkey = toggleKey.Value;

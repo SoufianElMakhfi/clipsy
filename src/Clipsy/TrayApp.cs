@@ -54,8 +54,6 @@ internal sealed class TrayApp : ApplicationContext
             recorder = new Recorder(ff, settings);
             recorder.SetTarget(TargetTracker.PrimaryMonitor());
             recorder.SetEnabled(true); // nach jedem Start (z. B. PC-Neustart) immer wieder AN
-            var rec = recorder;
-            Task.Run(() => rec.SetEncoder(EncoderProbe.Detect(ff)));
         }
 
         RegisterHotkeys();

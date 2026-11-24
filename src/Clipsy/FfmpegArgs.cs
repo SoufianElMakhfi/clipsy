@@ -18,13 +18,19 @@ public static class FfmpegArgs
 
     static string S(long v) => v.ToString(CultureInfo.InvariantCulture);
 
-    public static int BitrateKbps(int height, int fps) => (height >= 1080, fps >= 60) switch
+    public static bool IsHevc(string encoder) => encoder.StartsWith("hevc", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Obergrenze der Bitrate. Kodiert wird qualitätsbasiert (ruhige Szenen = wenig MB),
+    /// die Grenze greift nur bei sehr unruhigen Szenen. HEVC braucht für gleiche Qualität ~40 % weniger.
+    /// </summary>
+    public static int BitrateKbps(int height, int fps, bool hevc = false)
     {
-        (true, true) => 20000,
-        (true, false) => 12000,
-        (false, true) => 10000,
-        _ => 6000,
-    };
+        double kbps = hevc ? 12000 : 16000;           // 1080p60
+        if (height < 1080) kbps *= 0.5;
+        if (fps < 60) kbps *= 0.65;
+        return (int)kbps;
+    }
 
     /// <summary>Anzahl Ring-Buffer-Segmente: Clip-Länge + Reserve, damit nichts beim Speichern überschrieben wird.</summary>
     public static int SegmentSlots(int clipSeconds) => (int)Math.Ceiling(clipSeconds / (double)SegmentSeconds) + 4;
@@ -45,15 +51,23 @@ public static class FfmpegArgs
         };
     }
 
-    public static List<string> EncoderArgs(string encoder, int kbps)
+    /// <summary>
+    /// Qualitätsbasiertes Encoding. Gemessen an echtem Material (VMAF, 30-s-Clip 1080p60):
+    /// alt 20 Mbit/s H.264 = 71 MB / VMAF 95,2 · H.264 QVBR = 43 MB / 94,9 · HEVC QVBR = 22 MB / 94,2
+    /// (VMAF-Unterschied &lt; 1 Punkt = mit bloßem Auge nicht sichtbar).
+    /// </summary>
+    public static List<string> EncoderArgs(string encoder, int maxKbps)
     {
-        string b = $"{kbps}k", max = $"{kbps * 3 / 2}k", buf = $"{kbps * 2}k";
+        string max = $"{maxKbps}k", target = $"{maxKbps * 2 / 3}k", buf = $"{maxKbps * 2}k";
         return encoder switch
         {
-            "h264_nvenc" => ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-b:v", b, "-maxrate", max, "-bufsize", buf],
-            "h264_amf" => ["-c:v", "h264_amf", "-usage", "transcoding", "-quality", "balanced", "-rc", "vbr_peak", "-b:v", b, "-maxrate", max],
-            "h264_qsv" => ["-c:v", "h264_qsv", "-preset", "veryfast", "-b:v", b, "-maxrate", max],
-            _ => ["-c:v", "libx264", "-preset", "superfast", "-b:v", b, "-maxrate", max, "-bufsize", buf],
+            "hevc_nvenc" => ["-c:v", "hevc_nvenc", "-preset", "p5", "-tune", "hq", "-rc", "vbr", "-cq", "25", "-b:v", "0", "-maxrate", max, "-bufsize", buf],
+            "h264_nvenc" => ["-c:v", "h264_nvenc", "-preset", "p5", "-tune", "hq", "-rc", "vbr", "-cq", "22", "-b:v", "0", "-maxrate", max, "-bufsize", buf],
+            "hevc_amf" or "h264_amf" => ["-c:v", encoder, "-usage", "transcoding", "-quality", "quality", "-rc", "qvbr",
+                                         "-qvbr_quality_level", "23", "-b:v", target, "-maxrate", max],
+            "hevc_qsv" => ["-c:v", "hevc_qsv", "-preset", "faster", "-global_quality", "25", "-maxrate", max],
+            "h264_qsv" => ["-c:v", "h264_qsv", "-preset", "faster", "-global_quality", "23", "-maxrate", max],
+            _ => ["-c:v", "libx264", "-preset", "superfast", "-crf", "23", "-maxrate", max, "-bufsize", buf],
         };
     }
 
@@ -85,7 +99,7 @@ public static class FfmpegArgs
             a.AddRange(["-filter_complex", graph, "-map", "[aout]"]);
         }
 
-        a.AddRange(EncoderArgs(encoder, BitrateKbps(height, fps)));
+        a.AddRange(EncoderArgs(encoder, BitrateKbps(height, fps, IsHevc(encoder))));
         a.AddRange(["-g", S(fps), "-bf", "0"]); // 1 Keyframe/Sekunde → sauber schneidbare Segmente
         if (audio.Count > 0) a.AddRange(["-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2"]);
 
@@ -96,13 +110,18 @@ public static class FfmpegArgs
     }
 
     /// <summary>Segmente (Dateinamen relativ zum Arbeitsordner) ohne Neu-Encoding zu einer MP4 zusammenfügen.</summary>
-    public static List<string> Concat(IEnumerable<string> segmentNames, string outputPath) =>
-    [
-        "-hide_banner", "-loglevel", "error", "-y",
-        "-i", "concat:" + string.Join("|", segmentNames),
-        "-map", "0", "-c", "copy", "-avoid_negative_ts", "make_zero", "-movflags", "+faststart",
-        "-f", "mp4", outputPath,
-    ];
+    public static List<string> Concat(IEnumerable<string> segmentNames, string outputPath, bool hevc = false)
+    {
+        var a = new List<string>
+        {
+            "-hide_banner", "-loglevel", "error", "-y",
+            "-i", "concat:" + string.Join("|", segmentNames),
+            "-map", "0", "-c", "copy", "-avoid_negative_ts", "make_zero", "-movflags", "+faststart",
+        };
+        if (hevc) a.AddRange(["-tag:v", "hvc1"]); // damit auch iPhone/Mac/QuickTime HEVC abspielen
+        a.AddRange(["-f", "mp4", outputPath]);
+        return a;
+    }
 }
 
 public static class SegmentSelector
@@ -145,12 +164,15 @@ internal static class FfmpegLocator
 
 internal static class EncoderProbe
 {
-    static readonly string[] candidates = ["h264_nvenc", "h264_amf", "h264_qsv", "libx264"];
+    /// <summary>Reihenfolge: NVIDIA → AMD → Intel. HEVC fällt auf H.264 zurück, wenn die GPU kein HEVC kann.</summary>
+    public static IReadOnlyList<string> Candidates(string codec) => codec == "hevc"
+        ? ["hevc_nvenc", "hevc_amf", "hevc_qsv", "h264_nvenc", "h264_amf", "h264_qsv", "libx264"]
+        : ["h264_nvenc", "h264_amf", "h264_qsv", "libx264"];
 
-    /// <summary>Erster Hardware-Encoder, der wirklich funktioniert (NVIDIA → AMD → Intel), sonst CPU.</summary>
-    public static string Detect(string ffmpeg)
+    /// <summary>Erster Encoder, der auf diesem PC wirklich funktioniert; sonst CPU (libx264).</summary>
+    public static string Detect(string ffmpeg, string codec)
     {
-        foreach (var enc in candidates)
+        foreach (var enc in Candidates(codec))
             if (Works(ffmpeg, enc)) return enc;
         return "libx264";
     }

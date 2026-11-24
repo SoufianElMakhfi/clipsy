@@ -95,9 +95,44 @@ public class FfmpegArgsTests
     }
 
     [Theory]
-    [InlineData(1080, 60, 20000)]
-    [InlineData(720, 30, 6000)]
-    public void Bitrates(int h, int fps, int expected) => Assert.Equal(expected, FfmpegArgs.BitrateKbps(h, fps));
+    [InlineData(1080, 60, false, 16000)]
+    [InlineData(1080, 60, true, 12000)]
+    [InlineData(720, 30, false, 5200)]
+    public void Bitrate_caps(int h, int fps, bool hevc, int expected) =>
+        Assert.Equal(expected, FfmpegArgs.BitrateKbps(h, fps, hevc));
+
+    [Fact]
+    public void Amf_uses_quality_based_rate_control()
+    {
+        var a = FfmpegArgs.EncoderArgs("hevc_amf", 12000);
+        Assert.Equal("qvbr", a[a.IndexOf("-rc") + 1]);
+        Assert.Equal("12000k", a[a.IndexOf("-maxrate") + 1]);
+    }
+
+    [Fact]
+    public void Nvenc_uses_constant_quality()
+    {
+        var a = FfmpegArgs.EncoderArgs("hevc_nvenc", 12000);
+        Assert.Contains("-cq", a);
+        Assert.Equal("0", a[a.IndexOf("-b:v") + 1]);
+    }
+
+    [Fact]
+    public void Hevc_falls_back_to_h264_then_cpu()
+    {
+        var c = EncoderProbe.Candidates("hevc");
+        Assert.Equal("hevc_nvenc", c[0]);
+        Assert.True(c.ToList().IndexOf("h264_amf") > c.ToList().IndexOf("hevc_qsv"));
+        Assert.Equal("libx264", c[^1]);
+        Assert.DoesNotContain(EncoderProbe.Candidates("h264"), e => e.StartsWith("hevc"));
+    }
+
+    [Fact]
+    public void Hevc_clips_get_hvc1_tag()
+    {
+        Assert.Contains("hvc1", FfmpegArgs.Concat(["a.ts"], "o.mp4", hevc: true));
+        Assert.DoesNotContain("hvc1", FfmpegArgs.Concat(["a.ts"], "o.mp4", hevc: false));
+    }
 }
 
 public class SegmentSelectorTests
@@ -164,6 +199,7 @@ public class SettingsTests
         Assert.Equal(1080, s.Height);
         Assert.Equal(60, s.Fps);
         Assert.Equal("F10", s.ClipHotkey);
+        Assert.Equal("hevc", s.Codec);
         Assert.True(s.Autostart);
         Assert.Equal(AudioDevices.Auto, s.AudioOutput);
         Assert.Equal(AudioDevices.Off, s.Microphone); // Mikro nur auf Wunsch

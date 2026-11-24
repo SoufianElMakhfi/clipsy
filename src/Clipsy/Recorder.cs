@@ -16,6 +16,8 @@ internal sealed class Recorder : IDisposable
     readonly string bufferRoot;
     AppSettings settings;
     volatile string? encoder;
+    volatile string? encoderCodec;
+    Task? probe;
     Session? session;
     CaptureTarget? target;
     bool useDesktopDuplication;
@@ -45,10 +47,20 @@ internal sealed class Recorder : IDisposable
         _ => "–",
     };
 
-    public void SetEncoder(string name)
+    /// <summary>Encoder passend zum gewählten Codec im Hintergrund ermitteln (einmal pro Codec).</summary>
+    void EnsureEncoder()
     {
-        encoder = name;
-        Log.Write($"Encoder: {name}");
+        if (encoder is not null && encoderCodec == settings.Codec) return;
+        if (probe is { IsCompleted: false }) return;
+        var codec = settings.Codec;
+        encoder = null;
+        probe = Task.Run(() =>
+        {
+            var e = EncoderProbe.Detect(ffmpeg, codec);
+            encoderCodec = codec;
+            encoder = e;
+            Log.Write($"Encoder: {e} (gewünscht: {codec})");
+        });
     }
 
     public void SetEnabled(bool on)
@@ -75,6 +87,7 @@ internal sealed class Recorder : IDisposable
     public void ApplySettings(AppSettings s)
     {
         bool restart = s.Height != settings.Height || s.Fps != settings.Fps || s.ClipSeconds != settings.ClipSeconds ||
+                       s.Codec != settings.Codec ||
                        s.AudioOutput != settings.AudioOutput || s.Microphone != settings.Microphone;
         settings = s;
         if (restart) { StopSession(); nextStartUtc = DateTime.MinValue; }
@@ -149,7 +162,8 @@ internal sealed class Recorder : IDisposable
             State = RecorderState.Error;
         }
 
-        if (encoder is null || target is null) { State = RecorderState.Starting; return; }
+        EnsureEncoder();
+        if (encoder is null || encoderCodec != settings.Codec || target is null) { State = RecorderState.Starting; return; }
         if (now < nextStartUtc) return;
         StartSession(target);
     }
@@ -196,7 +210,8 @@ internal sealed class Recorder : IDisposable
             try { p.PriorityClass = ProcessPriorityClass.AboveNormal; } catch { }
             foreach (var pump in pumps) pump.Start();
 
-            session = new Session(p, dir, pumps, errors, DateTime.UtcNow, src) { OutputDeviceId = outId, MicDeviceId = micId };
+            session = new Session(p, dir, pumps, errors, DateTime.UtcNow, src)
+                { OutputDeviceId = outId, MicDeviceId = micId, Encoder = encoder! };
             State = RecorderState.Starting;
             Log.Write($"Aufnahme gestartet: {src.Mode}, {settings.Height}p{settings.Fps}, {encoder}, Tonquellen={pumps.Count}");
         }
@@ -247,7 +262,7 @@ internal sealed class Recorder : IDisposable
             WorkingDirectory = s.Dir,
             RedirectStandardError = true,
         };
-        foreach (var a in FfmpegArgs.Concat(selected, outPath)) psi.ArgumentList.Add(a);
+        foreach (var a in FfmpegArgs.Concat(selected, outPath, FfmpegArgs.IsHevc(s.Encoder))) psi.ArgumentList.Add(a);
 
         using var p = Process.Start(psi)!;
         Native.KillWithApp(p);
@@ -298,6 +313,7 @@ internal sealed class Recorder : IDisposable
         bool hasSegments;
         public string? OutputDeviceId { get; init; }
         public string? MicDeviceId { get; init; }
+        public string Encoder { get; init; } = "";
         public Process Process { get; } = process;
         public string Dir { get; } = dir;
         public DateTime StartedUtc { get; } = startedUtc;
