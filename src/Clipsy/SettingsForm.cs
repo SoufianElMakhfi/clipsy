@@ -192,8 +192,10 @@ internal sealed class HotkeyBox : TextBox
 {
     string value = "";
 
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public bool AllowNone { get; set; }
 
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public string Value
     {
         get => value;

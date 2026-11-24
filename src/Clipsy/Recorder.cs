@@ -170,7 +170,7 @@ internal sealed class Recorder : IDisposable
             {
                 if (e.Data is null) return;
                 errors.Enqueue(e.Data);
-                while (errors.Count > 40) errors.TryDequeue(out _);
+                while (errors.Count > 40 && errors.TryDequeue(out string? dropped)) { }
             };
             p.Start();
             Native.KillWithApp(p);
